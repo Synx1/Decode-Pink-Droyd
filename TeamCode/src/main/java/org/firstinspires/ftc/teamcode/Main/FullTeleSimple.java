@@ -10,6 +10,7 @@ import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.Gamepad;
+import com.seattlesolvers.solverslib.photon.*;
 
 import org.firstinspires.ftc.teamcode.SubSystem.DriveTrain;
 import org.firstinspires.ftc.teamcode.SubSystem.Intake;
@@ -82,6 +83,7 @@ public class FullTeleSimple extends OpMode {
     public void init() {
         // Heading in radians for Pedro Pose
         Pose startPose = new Pose(64.0, 8.0, Math.toRadians(90));
+        PhotonCore.PARALLELIZE_SERVOS = true; // Default set to true
 
         driveTrain = new DriveTrain(hardwareMap, startPose);
         shooter    = new Shooter(hardwareMap);
@@ -105,6 +107,7 @@ public class FullTeleSimple extends OpMode {
 
     @Override
     public void init_loop() {
+
         Gamepad gp = gamepad1;
 
         // Alliance selection before START
