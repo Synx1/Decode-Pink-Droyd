@@ -85,7 +85,7 @@ public class FullTeleSimple extends OpMode {
         // PHOTON SETUP (DO THIS FIRST)
         // ============================
         // IMPORTANT: Photon requires hubs connected via USB (NOT RS485).
-        PhotonCore.CONTROL_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        PhotonCore.CONTROL_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL); //k
         PhotonCore.EXPANSION_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
 
         // Keep true ONLY if your servo power is Photon-compatible (direct hub ports / goBILDA injector).
