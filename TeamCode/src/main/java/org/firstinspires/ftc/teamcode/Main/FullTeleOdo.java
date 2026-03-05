@@ -7,9 +7,11 @@ import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.RED_GOAL;
 
 import com.acmerobotics.dashboard.config.Config;
 import com.pedropathing.geometry.Pose;
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.Gamepad;
+import com.seattlesolvers.solverslib.photon.PhotonCore;
 
 import org.firstinspires.ftc.teamcode.SubSystem.DriveTrain;
 import org.firstinspires.ftc.teamcode.SubSystem.Intake;
@@ -50,6 +52,21 @@ public class FullTeleOdo extends OpMode {
 
     @Override
     public void init() {
+        // ============================
+        // PHOTON SETUP (DO THIS FIRST)
+        // ============================
+        // IMPORTANT: Photon requires hubs connected via USB (NOT RS485).
+        PhotonCore.CONTROL_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        PhotonCore.EXPANSION_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+
+        // Keep true ONLY if your servo power is Photon-compatible (direct hub ports / goBILDA injector).
+        // If using REV Servo Hub / external non-USB servo power device, set false.
+        PhotonCore.PARALLELIZE_SERVOS = true;
+
+        // Optional tuning (docs recommend 8; raising too high can cause issues)
+        PhotonCore.experimental.setMaximumParallelCommands(8);
+
+        PhotonCore.enable();
         // Requested start pose
         Pose startPose = new Pose(64.0, 8.0, Math.toRadians(90));
 

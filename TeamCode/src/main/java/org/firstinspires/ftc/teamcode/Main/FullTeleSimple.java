@@ -7,10 +7,11 @@ import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.RED_GOAL;
 
 import com.acmerobotics.dashboard.config.Config;
 import com.pedropathing.geometry.Pose;
+import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.Gamepad;
-import com.seattlesolvers.solverslib.photon.*;
+import com.seattlesolvers.solverslib.photon.PhotonCore;
 
 import org.firstinspires.ftc.teamcode.SubSystem.DriveTrain;
 import org.firstinspires.ftc.teamcode.SubSystem.Intake;
@@ -25,7 +26,7 @@ public class FullTeleSimple extends OpMode {
     private DriveTrain driveTrain;
     private Shooter shooter;
     private Intake intake;
-    private LLtrack llTrack; // Turret + tx alignment (Limelight)
+    private LLtrack llTrack;
 
     // Alliance / goal selection
     private boolean isBlue = true;
@@ -42,7 +43,6 @@ public class FullTeleSimple extends OpMode {
     // Loop time tracking
     private double lastLoopTimestamp = 0;
     private double lastLoopTime = 0;
-
 
     // ============================
     // Shooter Presets (ticks/sec)
@@ -81,9 +81,26 @@ public class FullTeleSimple extends OpMode {
 
     @Override
     public void init() {
-        // Heading in radians for Pedro Pose
+        // ============================
+        // PHOTON SETUP (DO THIS FIRST)
+        // ============================
+        // IMPORTANT: Photon requires hubs connected via USB (NOT RS485).
+        PhotonCore.CONTROL_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+        PhotonCore.EXPANSION_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
+
+        // Keep true ONLY if your servo power is Photon-compatible (direct hub ports / goBILDA injector).
+        // If using REV Servo Hub / external non-USB servo power device, set false.
+        PhotonCore.PARALLELIZE_SERVOS = true;
+
+        // Optional tuning (docs recommend 8; raising too high can cause issues)
+        PhotonCore.experimental.setMaximumParallelCommands(8);
+
+        PhotonCore.enable();
+
+        // ============================
+        // SUBSYSTEMS
+        // ============================
         Pose startPose = new Pose(64.0, 8.0, Math.toRadians(90));
-        PhotonCore.PARALLELIZE_SERVOS = true; // Default set to true
 
         driveTrain = new DriveTrain(hardwareMap, startPose);
         shooter    = new Shooter(hardwareMap);
@@ -107,6 +124,9 @@ public class FullTeleSimple extends OpMode {
 
     @Override
     public void init_loop() {
+        // Clear caches every loop to avoid stale reads in MANUAL caching
+        PhotonCore.CONTROL_HUB.clearBulkCache();
+        PhotonCore.EXPANSION_HUB.clearBulkCache();
 
         Gamepad gp = gamepad1;
 
@@ -132,14 +152,17 @@ public class FullTeleSimple extends OpMode {
 
     @Override
     public void loop() {
+        // Clear caches FIRST in every single run loop (MANUAL bulk caching rule)
+        PhotonCore.CONTROL_HUB.clearBulkCache();
+        PhotonCore.EXPANSION_HUB.clearBulkCache();
+
         updateLoopTime();
         Gamepad gp = gamepad1;
 
-        // ====== DRIVETRAIN (PINPOINT ODO ONLY) ======
+        // ====== DRIVETRAIN ======
         driveTrain.periodic();
         driveTrain.drive(gp);
 
-        // Current odometry pose from Pinpoint/Pedro
         Pose robotPose = driveTrain.getPose();
 
         // ====== INTAKE ======
@@ -151,14 +174,11 @@ public class FullTeleSimple extends OpMode {
             intake.spinOff();
         }
 
-        // ====== TURRET / LL TRACKING (LIMELIGHT ONLY FOR ALIGNMENT) ======
+        // ====== TURRET / LL TRACKING ======
         boolean tracking = gp.left_trigger > 0.5;
         boolean turretAligned = llTrack.update(tracking, lastLoopTime);
 
-        // =========================================================
-        // SHOOTER PRESET CONTROL
-        // D-pad LEFT/RIGHT cycles presets DURING OpMode
-        // =========================================================
+        // ====== SHOOTER PRESET CONTROL ======
         boolean dpadLeft = gp.dpad_left;
         boolean dpadRight = gp.dpad_right;
 
@@ -204,7 +224,7 @@ public class FullTeleSimple extends OpMode {
         lastOptionsPressed = optionsPressed;
 
         // ====== TELEMETRY ======
-        double distanceToGoal = MathUtilities.distance(robotPose, goalPose); // for display only
+        double distanceToGoal = MathUtilities.distance(robotPose, goalPose);
 
         telemetry.addData("Alliance", isBlue ? "BLUE" : "RED");
         telemetry.addData("Goal", "X: %.1f, Y: %.1f", goalPose.getX(), goalPose.getY());

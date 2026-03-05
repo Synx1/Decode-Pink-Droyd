@@ -39,8 +39,8 @@ public class Shooter {
     public static double MAX_TICKS_PER_SEC = 1500;
 
     // Claw positions
-    public static double OPEN_POSITION   =.9;
-    public static double CLOSED_POSITION = 0;
+    public static double OPEN_POSITION   = 0;
+    public static double CLOSED_POSITION = 1;
 
     private boolean activated  = true;
     private boolean clawClosed = true;
