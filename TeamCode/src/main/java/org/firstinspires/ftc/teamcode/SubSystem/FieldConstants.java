@@ -7,7 +7,7 @@ public final class FieldConstants {
     private FieldConstants() {}
 
     // ====== GOAL POSES ======
-    public static final Pose BLUE_GOAL = new Pose(4, 413);
+    public static final Pose BLUE_GOAL = new Pose(4, 143);
     public static final Pose RED_GOAL  = new Pose(140, 143);
 
     // ====== CORNER RESET POSES ======

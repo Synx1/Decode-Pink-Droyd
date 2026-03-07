@@ -1,12 +1,13 @@
-package org.firstinspires.ftc.teamcode.auto;
+package org.firstinspires.ftc.teamcode.scraps;
+
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import org.firstinspires.ftc.teamcode.SubSystem.DriveTrain;
 import org.firstinspires.ftc.teamcode.SubSystem.Intake;
@@ -14,8 +15,8 @@ import org.firstinspires.ftc.teamcode.SubSystem.LLtrack;
 import org.firstinspires.ftc.teamcode.SubSystem.Shooter;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "FrankLoverRed", group = "Main")
-public class FrankLoverRed extends OpMode {
+@Autonomous(name = "FrankLover29000", group = "Main")
+public class FrankLoverBlue extends OpMode {
 
     private DriveTrain driveTrain;
     private Shooter shooter;
@@ -66,14 +67,13 @@ public class FrankLoverRed extends OpMode {
 
         follower = Constants.createFollower(hardwareMap);
 
-        // MIRRORED: X = 144 - 64 = 80, Y stays same, heading adjusted
-        Pose startPose = new Pose(80.000, 8.000, Math.toRadians(90));
+        Pose startPose = new Pose(64.000, 8.000, Math.toRadians(90));
         follower.setStartingPose(startPose);
 
         driveTrain = new DriveTrain(hardwareMap, startPose);
         shooter    = new Shooter(hardwareMap);
         intake     = new Intake(hardwareMap);
-        llTrack    = new LLtrack(hardwareMap, false);  // false for red alliance
+        llTrack    = new LLtrack(hardwareMap, true);
 
         paths = new FarPaths(follower);
 
@@ -84,7 +84,7 @@ public class FrankLoverRed extends OpMode {
         stateStartMs = lastLoopMs;
         pathDelayStartMs = 0;
 
-        telemetry.addLine("INIT OK - Shooter FAR preset active (RED).");
+        telemetry.addLine("INIT OK - Shooter FAR preset active.");
         telemetry.update();
     }
 
@@ -99,7 +99,7 @@ public class FrankLoverRed extends OpMode {
         // safe defaults
         shooter.clawClose();
         intake.spinIdle();
-        llTrack.setAlliance(false);  // false for red alliance
+        llTrack.setAlliance(true);
     }
 
     @Override
@@ -124,7 +124,7 @@ public class FrankLoverRed extends OpMode {
                         pathDelayStartMs = now;
                     } else if (now - pathDelayStartMs >= PATH_DELAY_MS) {
                         // End of P1: open claw + start LL alignment
-                        llTrack.setAlliance(false);  // false for red
+                        llTrack.setAlliance(true);
                         shooter.clawOpen();
 
                         pathDelayStartMs = 0;
@@ -198,7 +198,7 @@ public class FrankLoverRed extends OpMode {
                     } else if (now - pathDelayStartMs >= PATH_DELAY_MS) {
                         // End of P3: open claw + LL align
                         shooter.clawOpen();
-                        llTrack.setAlliance(false);  // false for red
+                        llTrack.setAlliance(true);
 
                         pathDelayStartMs = 0;
                         state = State.TRACK2;
@@ -285,7 +285,7 @@ public class FrankLoverRed extends OpMode {
                     // Force exit of Path6
                     follower.breakFollowing();
                     shooter.clawOpen();
-                    llTrack.setAlliance(false);  // false for red
+                    llTrack.setAlliance(true);
 
                     pathDelayStartMs = 0;
                     state = State.TRACK3;  // go directly to next phase
@@ -316,7 +316,7 @@ public class FrankLoverRed extends OpMode {
                     } else if (now - pathDelayStartMs >= PATH_DELAY_MS) {
                         // End of P7: open claw + LL
                         shooter.clawOpen();
-                        llTrack.setAlliance(false);  // false for red
+                        llTrack.setAlliance(true);
 
                         pathDelayStartMs = 0;
                         state = State.TRACK3;
@@ -386,7 +386,7 @@ public class FrankLoverRed extends OpMode {
                     } else if (now - pathDelayStartMs >= PATH_DELAY_MS) {
                         // End of P9: open claw + LL align
                         shooter.clawOpen();
-                        llTrack.setAlliance(false);  // false for red
+                        llTrack.setAlliance(true);
 
                         pathDelayStartMs = 0;
                         state = State.TRACK4;
@@ -471,22 +471,20 @@ public class FrankLoverRed extends OpMode {
     }
 
     // ============================================================
-    // MIRRORED Paths – X coordinates: newX = 144 - oldX, Y same, headings: 180° - oldHeading
+    // Paths – matches your PedroAutonomous Paths 1–10
     // ============================================================
     private static class FarPaths {
 
         private final Follower f;
 
-        // MIRRORED: X = 144 - 64 = 80, Y same, heading 90° stays
-        // X = 144 - 60.6 = 83.4, heading 110° → 70°
-        public Pose p1Start = new Pose(80.000, 8.000, Math.toRadians(90));
-        public Pose p1End   = new Pose(83.400, 16.260, Math.toRadians(70));
+        public Pose p1Start = new Pose(64.000, 8.000, Math.toRadians(90));
+        public Pose p1End   = new Pose(60.600, 16.260, Math.toRadians(110));
 
         public FarPaths(Follower follower) {
             this.f = follower;
         }
 
-        // Path1 - MIRRORED
+        // Path1
         public PathChain FirstAction() {
             return f.pathBuilder()
                     .addPath(
@@ -496,67 +494,67 @@ public class FrankLoverRed extends OpMode {
                             )
                     )
                     .setLinearHeadingInterpolation(
-                            Math.toRadians(90),   // 90° stays
-                            Math.toRadians(70)    // 110° → 70° (180 - 110)
+                            Math.toRadians(90),
+                            Math.toRadians(110)
                     )
                     .build();
         }
 
-        // Path2 - MIRRORED: X = 144 - oldX, Y same, headings adjusted
+        // Path2
         public PathChain Path2() {
             return f.pathBuilder()
                     .addPath(
                             new BezierCurve(
-                                    new Pose(83.400, 17.782),     // 144 - 60.6
-                                    new Pose(86.219, 61.570),     // 144 - 57.781
-                                    new Pose(126.178, 59.813)     // 144 - 17.822
+                                    new Pose(60.600, 17.782),
+                                    new Pose(57.781, 61.570),
+                                    new Pose(17.822, 59.813)
                             )
                     )
                     .setLinearHeadingInterpolation(
-                            Math.toRadians(45),   // 135° → 45° (180 - 135)
-                            Math.toRadians(0)     // 180° → 0° (180 - 180)
+                            Math.toRadians(135),
+                            Math.toRadians(180)
                     )
                     .build();
         }
 
-        // Path3 - MIRRORED
+        // Path3
         public PathChain Path3() {
             return f.pathBuilder()
                     .addPath(
                             new BezierCurve(
-                                    new Pose(126.178, 59.813),    // 144 - 17.822
-                                    new Pose(86.351, 61.605),     // 144 - 57.649
-                                    new Pose(83.349, 17.782)      // 144 - 60.651
+                                    new Pose(17.822, 59.813),
+                                    new Pose(57.649, 61.605),
+                                    new Pose(60.651, 17.782)
                             )
                     )
                     .setLinearHeadingInterpolation(
-                            Math.toRadians(0),    // 180° → 0°
-                            Math.toRadians(70)    // 110° → 70°
+                            Math.toRadians(180),
+                            Math.toRadians(110)
                     )
                     .build();
         }
 
-        // Path4 - MIRRORED (tangent heading auto-adjusts)
+        // Path4
         public PathChain Path4() {
             return f.pathBuilder()
                     .addPath(
                             new BezierCurve(
-                                    new Pose(83.349, 17.782),     // 144 - 60.651
-                                    new Pose(107.036, 11.843),    // 144 - 36.964
-                                    new Pose(132.5, 12.9)         // 144 - 11.5
+                                    new Pose(60.651, 17.782),
+                                    new Pose(36.964, 11.843),
+                                    new Pose(11.5, 12.9)
                             )
                     )
                     .setTangentHeadingInterpolation()
                     .build();
         }
 
-        // Path5 - MIRRORED (reversed + tangent)
+        // Path5
         public PathChain Path5() {
             return f.pathBuilder()
                     .addPath(
                             new BezierLine(
-                                    new Pose(132.5, 12.9),                          // 144 - 11.5
-                                    new Pose(127.518072289156642, 12.927710843373504)  // 144 - 16.482
+                                    new Pose(11.5, 12.9),
+                                    new Pose(16.481927710843358, 12.927710843373504)
                             )
                     )
                     .setTangentHeadingInterpolation()
@@ -564,81 +562,81 @@ public class FrankLoverRed extends OpMode {
                     .build();
         }
 
-        // Path6 - MIRRORED
+        // Path6
         public PathChain Path6() {
             return f.pathBuilder()
                     .addPath(
                             new BezierCurve(
-                                    new Pose(127.518, 12.928),    // 144 - 16.482
-                                    new Pose(123.096, 10.458),    // 144 - 20.904
-                                    new Pose(133.807, 10.205)     // 144 - 10.193
+                                    new Pose(16.482, 12.928),
+                                    new Pose(20.904, 10.458),
+                                    new Pose(10.193, 10.205)
                             )
                     )
                     .setLinearHeadingInterpolation(
-                            Math.toRadians(0),    // 180° → 0°
-                            Math.toRadians(0)     // 180° → 0°
+                            Math.toRadians(180),
+                            Math.toRadians(180)
                     )
                     .build();
         }
 
-        // Path7 - MIRRORED
+        // Path7
         public PathChain Path7() {
             return f.pathBuilder()
                     .addPath(
                             new BezierLine(
-                                    new Pose(133.807, 10.205),    // 144 - 10.193
-                                    new Pose(83.300, 17.782)      // 144 - 60.700
+                                    new Pose(10.193, 10.205),
+                                    new Pose(60.700, 17.782)
                             )
                     )
                     .setLinearHeadingInterpolation(
-                            Math.toRadians(0),    // 180° → 0°
-                            Math.toRadians(70)    // 110° → 70°
+                            Math.toRadians(180),
+                            Math.toRadians(110)
                     )
                     .build();
         }
 
-        // Path8 - MIRRORED (tangent heading auto-adjusts)
+        // Path8
         public PathChain Path8() {
             return f.pathBuilder()
                     .addPath(
                             new BezierCurve(
-                                    new Pose(83.300, 17.782),     // 144 - 60.700
-                                    new Pose(81.427, 35.192),     // 144 - 62.573
-                                    new Pose(129.313, 35.735)     // 144 - 14.687
+                                    new Pose(60.700, 17.782),
+                                    new Pose(62.573, 35.192),
+                                    new Pose(14.687, 35.735)
                             )
                     )
                     .setTangentHeadingInterpolation()
                     .build();
         }
 
-        // Path9 - MIRRORED
+        // Path9
         public PathChain Path9() {
             return f.pathBuilder()
                     .addPath(
                             new BezierLine(
-                                    new Pose(129.313, 35.735),    // 144 - 14.687
-                                    new Pose(83.300, 17.782)      // 144 - 60.700
+                                    new Pose(14.687, 35.735),
+                                    new Pose(60.700, 17.782)
                             )
                     )
                     .setLinearHeadingInterpolation(
-                            Math.toRadians(0),    // 180° → 0°
-                            Math.toRadians(70)    // 110° → 70°
+                            Math.toRadians(180),
+                            Math.toRadians(110)
                     )
                     .build();
         }
 
-        // Path10 - MIRRORED
+        // Path10
         public PathChain Path10() {
             return f.pathBuilder()
                     .addPath(
                             new BezierLine(
-                                    new Pose(83.300, 17.782),     // 144 - 60.700
-                                    new Pose(110.590, 18.735)     // 144 - 33.410
+                                    new Pose(60.700, 17.782),
+                                    new Pose(33.410, 18.735)
                             )
                     )
                     .setLinearHeadingInterpolation(
-                            Math.toRadians(70),   // 110° → 70°
-                            Math.toRadians(90)    // 90° stays
+                            Math.toRadians(110),
+                            Math.toRadians(90)
                     )
                     .build();
         }

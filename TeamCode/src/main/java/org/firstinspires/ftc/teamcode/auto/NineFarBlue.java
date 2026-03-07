@@ -16,9 +16,9 @@ import org.firstinspires.ftc.teamcode.SubSystem.LLtrack;
 import org.firstinspires.ftc.teamcode.SubSystem.Shooter;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "PinkXRollingBlue", group = "Autonomous")
+@Autonomous(name = "NineFarBlue", group = "Autonomous")
 @Configurable
-public class PinkXRollingBlue extends OpMode {
+public class NineFarBlue extends OpMode {
 
     private TelemetryManager panelsTelemetry;
     public Follower follower;
@@ -30,32 +30,27 @@ public class PinkXRollingBlue extends OpMode {
 
     private static final long SHOOT_SETTLE_MS = 550;
     private static final long DUMP0_MS = 1150;
-    private static final long DUMP_MS = 1000;
-
-    // repeat IntakeC -> Shoot1 exactly 4 times
-    private int intakeCLoops = 0;
+    private static final long DUMP1_MS = 1000;
+    private static final long DUMP2_MS = 1000;
 
     private enum State {
         SHOOT0_PATH,
         SHOOT0_TRACK,
         SHOOT0_DUMP,
 
-        INTAKEA1_PATH,
-        SHOOT1A_PATH,
-        SHOOT1A_TRACK,
-        SHOOT1A_DUMP,
+        INTAKEA_PATH,
+
+        SHOOT1_PATH,
+        SHOOT1_TRACK,
+        SHOOT1_DUMP,
 
         INTAKEB_PATH,
-        SHOOT1B_PATH,
-        SHOOT1B_TRACK,
-        SHOOT1B_DUMP,
 
-        INTAKEC_PATH,
-        SHOOT1C_PATH,
-        SHOOT1C_TRACK,
-        SHOOT1C_DUMP,
+        SHOOT2_PATH,
+        SHOOT2_TRACK,
+        SHOOT2_DUMP,
 
-        PARK,
+        PATH6,
         DONE
     }
 
@@ -68,12 +63,13 @@ public class PinkXRollingBlue extends OpMode {
         panelsTelemetry = PanelsTelemetry.INSTANCE.getTelemetry();
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(63.58008075370121, 8.193808882907136, Math.toRadians(90)));
+        follower.setStartingPose(new Pose(63.38627187079407, 8.387617765814257, Math.toRadians(90)));
 
         shooter = new Shooter(hardwareMap);
         intake = new Intake(hardwareMap);
 
-        LLtrack.BLUE_TAG_ID = 24;
+        // Force LLtrack to only use AprilTag 20
+        LLtrack.BLUE_TAG_ID = 20;
         LLtrack.RED_TAG_ID = 20;
 
         llTrack = new LLtrack(hardwareMap, false);
@@ -98,7 +94,6 @@ public class PinkXRollingBlue extends OpMode {
         state = State.SHOOT0_PATH;
         stateStartMs = System.currentTimeMillis();
         lastLoopMs = stateStartMs;
-        intakeCLoops = 0;
     }
 
     @Override
@@ -113,6 +108,7 @@ public class PinkXRollingBlue extends OpMode {
         switch (state) {
 
             case SHOOT0_PATH:
+                // turret locked / home while driving
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
@@ -121,6 +117,7 @@ public class PinkXRollingBlue extends OpMode {
                 break;
 
             case SHOOT0_TRACK:
+                // unlock turret and track only after path ends
                 llTrack.update(true, dt);
                 if (elapsed(now) >= SHOOT_SETTLE_MS && shooter.atTarget()) {
                     intake.spinIn();
@@ -135,38 +132,38 @@ public class PinkXRollingBlue extends OpMode {
                     shooter.clawClose();
                     follower.followPath(paths.IntakeA);
                     intake.spinIn();
-                    transition(State.INTAKEA1_PATH, now);
+                    transition(State.INTAKEA_PATH, now);
                 }
                 break;
 
-            case INTAKEA1_PATH:
+            case INTAKEA_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     intake.spinIdle();
                     follower.followPath(paths.Shoot1);
-                    transition(State.SHOOT1A_PATH, now);
+                    transition(State.SHOOT1_PATH, now);
                 }
                 break;
 
-            case SHOOT1A_PATH:
+            case SHOOT1_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
-                    transition(State.SHOOT1A_TRACK, now);
+                    transition(State.SHOOT1_TRACK, now);
                 }
                 break;
 
-            case SHOOT1A_TRACK:
+            case SHOOT1_TRACK:
                 llTrack.update(true, dt);
                 if (elapsed(now) >= SHOOT_SETTLE_MS && shooter.atTarget()) {
                     intake.spinIn();
-                    transition(State.SHOOT1A_DUMP, now);
+                    transition(State.SHOOT1_DUMP, now);
                 }
                 break;
 
-            case SHOOT1A_DUMP:
+            case SHOOT1_DUMP:
                 llTrack.update(true, dt);
-                if (elapsed(now) >= DUMP_MS) {
+                if (elapsed(now) >= DUMP1_MS) {
                     intake.spinIdle();
                     shooter.clawClose();
                     follower.followPath(paths.IntakeB);
@@ -179,57 +176,38 @@ public class PinkXRollingBlue extends OpMode {
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     intake.spinIdle();
-                    follower.followPath(paths.Shoot1);
-                    transition(State.INTAKEC_PATH, now);
+                    follower.followPath(paths.shoot2);
+                    transition(State.SHOOT2_PATH, now);
                 }
                 break;
 
-
-            case INTAKEC_PATH:
-                llTrack.update(false, dt);
-                if (!follower.isBusy()) {
-                    intake.spinIdle();
-                    follower.followPath(paths.Shoot1);
-                    transition(State.SHOOT1C_PATH, now);
-                }
-                break;
-
-            case SHOOT1C_PATH:
+            case SHOOT2_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
-                    transition(State.SHOOT1C_TRACK, now);
+                    transition(State.SHOOT2_TRACK, now);
                 }
                 break;
 
-            case SHOOT1C_TRACK:
+            case SHOOT2_TRACK:
                 llTrack.update(true, dt);
                 if (elapsed(now) >= SHOOT_SETTLE_MS && shooter.atTarget()) {
                     intake.spinIn();
-                    transition(State.SHOOT1C_DUMP, now);
+                    transition(State.SHOOT2_DUMP, now);
                 }
                 break;
 
-            case SHOOT1C_DUMP:
+            case SHOOT2_DUMP:
                 llTrack.update(true, dt);
-                if (elapsed(now) >= DUMP_MS) {
+                if (elapsed(now) >= DUMP2_MS) {
                     intake.spinIdle();
                     shooter.clawClose();
-
-                    intakeCLoops++;
-
-                    if (intakeCLoops < 5) {
-                        follower.followPath(paths.IntakeC);
-                        intake.spinIn();
-                        transition(State.INTAKEC_PATH, now);
-                    } else {
-                        follower.followPath(paths.Park);
-                        transition(State.PARK, now);
-                    }
+                    follower.followPath(paths.Path6);
+                    transition(State.PATH6, now);
                 }
                 break;
 
-            case PARK:
+            case PATH6:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     transition(State.DONE, now);
@@ -243,7 +221,6 @@ public class PinkXRollingBlue extends OpMode {
         }
 
         panelsTelemetry.debug("State", state.name());
-        panelsTelemetry.debug("IntakeC Loops", intakeCLoops);
         panelsTelemetry.debug("Shooter Target", shooter.getTarget());
         panelsTelemetry.debug("Shooter Vel", shooter.getVelocity());
         panelsTelemetry.debug("Shooter AtSpd", shooter.atTarget());
@@ -263,16 +240,13 @@ public class PinkXRollingBlue extends OpMode {
         return now - stateStartMs;
     }
 
-
     public static class Paths {
         public PathChain Shoot0;
         public PathChain IntakeA;
         public PathChain Shoot1;
         public PathChain IntakeB;
         public PathChain shoot2;
-        public PathChain IntakeC;
-        public PathChain shoot3;
-        public PathChain Park;
+        public PathChain Path6;
 
         public Paths(Follower follower) {
             Shoot0 = follower.pathBuilder()
@@ -329,35 +303,15 @@ public class PinkXRollingBlue extends OpMode {
                     .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(110))
                     .build();
 
-            IntakeC = follower.pathBuilder()
+            Path6 = follower.pathBuilder()
                     .addPath(
                             new BezierLine(
                                     new Pose(55.800, 18.388),
-                                    new Pose(10.324, 11.386)
+                                    new Pose(29.511, 16.619)
                             )
                     )
-                    .setConstantHeadingInterpolation(Math.toRadians(-170))
-                    .build();
-
-            shoot3 = follower.pathBuilder()
-                    .addPath(
-                            new BezierLine(
-                                    new Pose(10.324, 11.386),
-                                    new Pose(55.800, 18.388)
-                            )
-                    )
-                    .setLinearHeadingInterpolation(Math.toRadians(-170), Math.toRadians(110))
-                    .build();
-
-            Park = follower.pathBuilder()
-                    .addPath(
-                            new BezierLine(
-                                    new Pose(55.800, 18.388),
-                                    new Pose(36.008, 16.131)
-                            )
-                    )
-                    .setLinearHeadingInterpolation(Math.toRadians(110), Math.toRadians(90))
+                    .setConstantHeadingInterpolation(Math.toRadians(180))
                     .build();
         }
     }
-}
+    }

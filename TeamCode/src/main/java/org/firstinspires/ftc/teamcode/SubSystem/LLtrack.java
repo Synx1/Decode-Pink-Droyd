@@ -36,8 +36,8 @@ public class LLtrack {
     public static double llKd = 0.0001;
     public static double llKf = 0.0;
 
-    public static double llToleranceDeg = .5;
-    public static double maxPower = 0.5;
+    public static double llToleranceDeg = 1.5;
+    public static double maxPower = 0.7;
 
     // --- Home P control (encoder ticks) ---
     // Used both to return to home AND to actively hold it once there.

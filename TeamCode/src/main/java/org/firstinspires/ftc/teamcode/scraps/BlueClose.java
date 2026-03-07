@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.auto;
+package org.firstinspires.ftc.teamcode.scraps;
 
 import com.bylazar.configurables.annotations.Configurable;
 import com.bylazar.telemetry.PanelsTelemetry;
@@ -16,9 +16,9 @@ import org.firstinspires.ftc.teamcode.SubSystem.LLtrack;
 import org.firstinspires.ftc.teamcode.SubSystem.Shooter;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "BlueFar", group = "Autonomous")
+@Autonomous(name = "BlueClose", group = "Autonomous")
 @Configurable
-public class BlueFar extends OpMode {
+public class BlueClose extends OpMode {
 
     private TelemetryManager panelsTelemetry;
     public Follower follower;
@@ -28,14 +28,14 @@ public class BlueFar extends OpMode {
     private Intake intake;
     private LLtrack llTrack;
 
-    // ── State Machine ──────────────────────────────────────────────
     private enum State {
         SHOOT0_PATH,
         SHOOT0_TRACK,
         SHOOT0_DUMP,
 
         INTAKE_A_PATH,
-        INTAKE_A_STOP,
+        STOP_INTAKING_PATH,
+        STOP_INTAKING_WAIT,
 
         SHOOT1_INTAKE_PRE,
         SHOOT1_PATH,
@@ -67,21 +67,20 @@ public class BlueFar extends OpMode {
     private long lastLoopMs         = 0;
     private long shooterStableStart = 0;
 
-    // ── Init ───────────────────────────────────────────────────────
     @Override
     public void init() {
         panelsTelemetry = PanelsTelemetry.INSTANCE.getTelemetry();
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(57.240, 9.063, Math.toRadians(90)));
+        follower.setStartingPose(new Pose(33.137, 132.694, Math.toRadians(90)));
 
         shooter = new Shooter(hardwareMap);
         intake  = new Intake(hardwareMap);
-        llTrack = new LLtrack(hardwareMap, true);
+        llTrack = new LLtrack(hardwareMap, true); // blue alliance
 
         paths = new Paths(follower);
 
-        shooter.shootFar();
+        shooter.shootNear();
         shooter.clawClose();
         intake.spinIdle();
         llTrack.setAlliance(true);
@@ -101,7 +100,6 @@ public class BlueFar extends OpMode {
         lastLoopMs   = stateStartMs;
     }
 
-    // ── Main Loop ──────────────────────────────────────────────────
     @Override
     public void loop() {
         long now = System.currentTimeMillis();
@@ -113,6 +111,7 @@ public class BlueFar extends OpMode {
 
         switch (state) {
 
+            // ── SHOOT0 ─────────────────────────────────────────────
             case SHOOT0_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
@@ -137,24 +136,34 @@ public class BlueFar extends OpMode {
                     intake.spinIdle();
                     shooter.clawClose();
                     follower.followPath(paths.Intake_A);
-                    intake.spinIn();
+                    intake.spinIn();               // intake ON while driving Intake_A
                     transition(State.INTAKE_A_PATH, now);
                 }
                 break;
 
+            // ── INTAKE_A ───────────────────────────────────────────
             case INTAKE_A_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
-                    intake.spinIdle();
-                    transition(State.INTAKE_A_STOP, now);
+                    intake.spinIdle();             // intake OFF at START of StopIntaking
+                    follower.followPath(paths.StopIntaking);
+                    transition(State.STOP_INTAKING_PATH, now);
                 }
                 break;
 
-            case INTAKE_A_STOP:
+            case STOP_INTAKING_PATH:
+                llTrack.update(false, dt);
+                if (!follower.isBusy()) {
+                    transition(State.STOP_INTAKING_WAIT, now);
+                }
+                break;
+
+            case STOP_INTAKING_WAIT:
                 intake.spinIn();
                 transition(State.SHOOT1_INTAKE_PRE, now);
                 break;
 
+            // ── SHOOT1 ─────────────────────────────────────────────
             case SHOOT1_INTAKE_PRE:
                 if (elapsed(now) >= 1500) {
                     intake.spinIdle();
@@ -192,6 +201,7 @@ public class BlueFar extends OpMode {
                 }
                 break;
 
+            // ── INTAKE_B ───────────────────────────────────────────
             case INTAKE_B_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
@@ -205,6 +215,7 @@ public class BlueFar extends OpMode {
                 transition(State.SHOOT2_INTAKE_PRE, now);
                 break;
 
+            // ── SHOOT2 ─────────────────────────────────────────────
             case SHOOT2_INTAKE_PRE:
                 if (elapsed(now) >= 1500) {
                     intake.spinIdle();
@@ -242,6 +253,7 @@ public class BlueFar extends OpMode {
                 }
                 break;
 
+            // ── INTAKE_C ───────────────────────────────────────────
             case INTAKE_C_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
@@ -255,6 +267,7 @@ public class BlueFar extends OpMode {
                 transition(State.SHOOT3_INTAKE_PRE, now);
                 break;
 
+            // ── SHOOT3 ─────────────────────────────────────────────
             case SHOOT3_INTAKE_PRE:
                 if (elapsed(now) >= 1500) {
                     intake.spinIdle();
@@ -291,6 +304,7 @@ public class BlueFar extends OpMode {
                 }
                 break;
 
+            // ── PARK / DONE ────────────────────────────────────────
             case PARK:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
@@ -338,6 +352,7 @@ public class BlueFar extends OpMode {
 
         public PathChain Shoot0;
         public PathChain Intake_A;
+        public PathChain StopIntaking;
         public PathChain Shoot1;
         public PathChain Intake_B;
         public PathChain Shoot2;
@@ -349,69 +364,77 @@ public class BlueFar extends OpMode {
 
             Shoot0 = follower.pathBuilder()
                     .addPath(new BezierLine(
-                            new Pose(57.240, 9.063),
-                            new Pose(58.125, 22.362)
+                            new Pose(33.137, 132.694),
+                            new Pose(62.100, 83.000)
                     ))
-                    .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(110))
+                    .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(130))
                     .build();
 
             Intake_A = follower.pathBuilder()
-                    .addPath(new BezierCurve(
-                            new Pose(58.125, 22.362),
-                            new Pose(44.299, 37.375),
-                            new Pose(19.354, 35.978)
+                    .addPath(new BezierLine(
+                            new Pose(62.100, 83.000),
+                            new Pose(20.100, 82.400)
                     ))
-                    .setLinearHeadingInterpolation(Math.toRadians(110), Math.toRadians(180))
+                    .setTangentHeadingInterpolation()
+                    .build();
+
+            StopIntaking = follower.pathBuilder()
+                    .addPath(new BezierCurve(
+                            new Pose(20.100, 82.400),
+                            new Pose(32.692, 81.906),
+                            new Pose(18.200, 75.000)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(180))
                     .build();
 
             Shoot1 = follower.pathBuilder()
                     .addPath(new BezierLine(
-                            new Pose(19.354, 35.978),
-                            new Pose(58.125, 22.362)
+                            new Pose(18.200, 75.000),
+                            new Pose(62.100, 83.100)
                     ))
-                    .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(110))
+                    .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(130))
                     .build();
 
             Intake_B = follower.pathBuilder()
                     .addPath(new BezierCurve(
-                            new Pose(58.125, 22.362),
-                            new Pose(54.683, 60.480),
-                            new Pose(18.244, 59.661)
+                            new Pose(62.100, 83.100),
+                            new Pose(60.045, 59.867),
+                            new Pose(22.934, 59.900)
                     ))
-                    .setLinearHeadingInterpolation(Math.toRadians(110), Math.toRadians(180))
+                    .setLinearHeadingInterpolation(Math.toRadians(130), Math.toRadians(180))
                     .build();
 
             Shoot2 = follower.pathBuilder()
                     .addPath(new BezierLine(
-                            new Pose(18.244, 59.661),
-                            new Pose(58.125, 22.362)
+                            new Pose(22.934, 59.900),
+                            new Pose(62.100, 82.400)
                     ))
-                    .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(110))
+                    .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(130))
                     .build();
 
             Intake_C = follower.pathBuilder()
                     .addPath(new BezierCurve(
-                            new Pose(58.125, 22.362),
-                            new Pose(59.159, 86.435),
-                            new Pose(20.358, 84.166)
+                            new Pose(62.100, 82.400),
+                            new Pose(56.366, 35.851),
+                            new Pose(23.400, 35.300)
                     ))
                     .setTangentHeadingInterpolation()
                     .build();
 
             Shoot3 = follower.pathBuilder()
                     .addPath(new BezierLine(
-                            new Pose(20.358, 84.166),
-                            new Pose(57.834, 22.343)
+                            new Pose(23.400, 35.300),
+                            new Pose(61.900, 82.800)
                     ))
-                    .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(110))
+                    .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(130))
                     .build();
 
             Park = follower.pathBuilder()
                     .addPath(new BezierLine(
-                            new Pose(57.834, 22.343),
-                            new Pose(33.535, 22.708)
+                            new Pose(61.900, 82.800),
+                            new Pose(25.200, 71.900)
                     ))
-                    .setLinearHeadingInterpolation(Math.toRadians(110), Math.toRadians(90))
+                    .setLinearHeadingInterpolation(Math.toRadians(130), Math.toRadians(90))
                     .build();
         }
     }
