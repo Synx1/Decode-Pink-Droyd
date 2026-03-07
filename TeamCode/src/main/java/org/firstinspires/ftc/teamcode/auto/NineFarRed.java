@@ -16,9 +16,9 @@ import org.firstinspires.ftc.teamcode.SubSystem.LLtrack;
 import org.firstinspires.ftc.teamcode.SubSystem.Shooter;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "PinkXRollingRed", group = "Autonomous")
+@Autonomous(name = "NineFarRed", group = "Autonomous")
 @Configurable
-public class PinkXRollingRed extends OpMode {
+public class NineFarRed extends OpMode {
 
     private TelemetryManager panelsTelemetry;
     public Follower follower;
@@ -30,32 +30,27 @@ public class PinkXRollingRed extends OpMode {
 
     private static final long SHOOT_SETTLE_MS = 550;
     private static final long DUMP0_MS = 1150;
-    private static final long DUMP_MS = 1000;
-
-    // repeat IntakeC -> Shoot1 exactly 4 times
-    private int intakeCLoops = 0;
+    private static final long DUMP1_MS = 1000;
+    private static final long DUMP2_MS = 1000;
 
     private enum State {
         SHOOT0_PATH,
         SHOOT0_TRACK,
         SHOOT0_DUMP,
 
-        INTAKEA1_PATH,
-        SHOOT1A_PATH,
-        SHOOT1A_TRACK,
-        SHOOT1A_DUMP,
+        INTAKEA_PATH,
+
+        SHOOT1_PATH,
+        SHOOT1_TRACK,
+        SHOOT1_DUMP,
 
         INTAKEB_PATH,
-        SHOOT1B_PATH,
-        SHOOT1B_TRACK,
-        SHOOT1B_DUMP,
 
-        INTAKEC_PATH,
-        SHOOT1C_PATH,
-        SHOOT1C_TRACK,
-        SHOOT1C_DUMP,
+        SHOOT2_PATH,
+        SHOOT2_TRACK,
+        SHOOT2_DUMP,
 
-        PARK,
+        PATH6,
         DONE
     }
 
@@ -73,7 +68,8 @@ public class PinkXRollingRed extends OpMode {
         shooter = new Shooter(hardwareMap);
         intake = new Intake(hardwareMap);
 
-        LLtrack.BLUE_TAG_ID = 24;
+        // Force LLtrack to only use AprilTag 20
+        LLtrack.BLUE_TAG_ID = 20;
         LLtrack.RED_TAG_ID = 20;
 
         llTrack = new LLtrack(hardwareMap, false);
@@ -98,7 +94,6 @@ public class PinkXRollingRed extends OpMode {
         state = State.SHOOT0_PATH;
         stateStartMs = System.currentTimeMillis();
         lastLoopMs = stateStartMs;
-        intakeCLoops = 0;
     }
 
     @Override
@@ -113,6 +108,7 @@ public class PinkXRollingRed extends OpMode {
         switch (state) {
 
             case SHOOT0_PATH:
+                // turret locked / home while driving
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
@@ -121,6 +117,7 @@ public class PinkXRollingRed extends OpMode {
                 break;
 
             case SHOOT0_TRACK:
+                // unlock turret and track only after path ends
                 llTrack.update(true, dt);
                 if (elapsed(now) >= SHOOT_SETTLE_MS && shooter.atTarget()) {
                     intake.spinIn();
@@ -135,38 +132,38 @@ public class PinkXRollingRed extends OpMode {
                     shooter.clawClose();
                     follower.followPath(paths.IntakeA);
                     intake.spinIn();
-                    transition(State.INTAKEA1_PATH, now);
+                    transition(State.INTAKEA_PATH, now);
                 }
                 break;
 
-            case INTAKEA1_PATH:
+            case INTAKEA_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     intake.spinIdle();
                     follower.followPath(paths.Shoot1);
-                    transition(State.SHOOT1A_PATH, now);
+                    transition(State.SHOOT1_PATH, now);
                 }
                 break;
 
-            case SHOOT1A_PATH:
+            case SHOOT1_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
-                    transition(State.SHOOT1A_TRACK, now);
+                    transition(State.SHOOT1_TRACK, now);
                 }
                 break;
 
-            case SHOOT1A_TRACK:
+            case SHOOT1_TRACK:
                 llTrack.update(true, dt);
                 if (elapsed(now) >= SHOOT_SETTLE_MS && shooter.atTarget()) {
                     intake.spinIn();
-                    transition(State.SHOOT1A_DUMP, now);
+                    transition(State.SHOOT1_DUMP, now);
                 }
                 break;
 
-            case SHOOT1A_DUMP:
+            case SHOOT1_DUMP:
                 llTrack.update(true, dt);
-                if (elapsed(now) >= DUMP_MS) {
+                if (elapsed(now) >= DUMP1_MS) {
                     intake.spinIdle();
                     shooter.clawClose();
                     follower.followPath(paths.IntakeB);
@@ -179,57 +176,38 @@ public class PinkXRollingRed extends OpMode {
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     intake.spinIdle();
-                    follower.followPath(paths.Shoot1);
-                    transition(State.INTAKEC_PATH, now);
+                    follower.followPath(paths.shoot2);
+                    transition(State.SHOOT2_PATH, now);
                 }
                 break;
 
-
-            case INTAKEC_PATH:
-                llTrack.update(false, dt);
-                if (!follower.isBusy()) {
-                    intake.spinIdle();
-                    follower.followPath(paths.Shoot1);
-                    transition(State.SHOOT1C_PATH, now);
-                }
-                break;
-
-            case SHOOT1C_PATH:
+            case SHOOT2_PATH:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
-                    transition(State.SHOOT1C_TRACK, now);
+                    transition(State.SHOOT2_TRACK, now);
                 }
                 break;
 
-            case SHOOT1C_TRACK:
+            case SHOOT2_TRACK:
                 llTrack.update(true, dt);
                 if (elapsed(now) >= SHOOT_SETTLE_MS && shooter.atTarget()) {
                     intake.spinIn();
-                    transition(State.SHOOT1C_DUMP, now);
+                    transition(State.SHOOT2_DUMP, now);
                 }
                 break;
 
-            case SHOOT1C_DUMP:
+            case SHOOT2_DUMP:
                 llTrack.update(true, dt);
-                if (elapsed(now) >= DUMP_MS) {
+                if (elapsed(now) >= DUMP2_MS) {
                     intake.spinIdle();
                     shooter.clawClose();
-
-                    intakeCLoops++;
-
-                    if (intakeCLoops < 5) {
-                        follower.followPath(paths.IntakeC);
-                        intake.spinIn();
-                        transition(State.INTAKEC_PATH, now);
-                    } else {
-                        follower.followPath(paths.PARK);
-                        transition(State.PARK, now);
-                    }
+                    follower.followPath(paths.Path6);
+                    transition(State.PATH6, now);
                 }
                 break;
 
-            case PARK:
+            case PATH6:
                 llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     transition(State.DONE, now);
@@ -243,7 +221,6 @@ public class PinkXRollingRed extends OpMode {
         }
 
         panelsTelemetry.debug("State", state.name());
-        panelsTelemetry.debug("IntakeC Loops", intakeCLoops);
         panelsTelemetry.debug("Shooter Target", shooter.getTarget());
         panelsTelemetry.debug("Shooter Vel", shooter.getVelocity());
         panelsTelemetry.debug("Shooter AtSpd", shooter.atTarget());
@@ -263,98 +240,63 @@ public class PinkXRollingRed extends OpMode {
         return now - stateStartMs;
     }
 
-
     public static class Paths {
         public PathChain Shoot0;
         public PathChain IntakeA;
         public PathChain Shoot1;
         public PathChain IntakeB;
         public PathChain shoot2;
-        public PathChain IntakeC;
-        public PathChain shoot3;
-        public PathChain PARK;
+        public PathChain Path6;
 
         public Paths(Follower follower) {
-            Shoot0 = follower.pathBuilder()
-                    .addPath(
+            Shoot0 = follower.pathBuilder().addPath(
                             new BezierLine(
                                     new Pose(81.195, 9.163),
                                     new Pose(88.000, 18.388)
                             )
-                    )
-                    .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(70))
+                    ).setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(70))
                     .build();
 
-            IntakeA = follower.pathBuilder()
-                    .addPath(
+            IntakeA = follower.pathBuilder().addPath(
                             new BezierCurve(
                                     new Pose(88.000, 18.388),
                                     new Pose(94.264, 35.476),
                                     new Pose(130.824, 34.742)
                             )
-                    )
-                    .setTangentHeadingInterpolation()
+                    ).setTangentHeadingInterpolation()
                     .build();
 
-            Shoot1 = follower.pathBuilder()
-                    .addPath(
+            Shoot1 = follower.pathBuilder().addPath(
                             new BezierLine(
                                     new Pose(130.824, 34.742),
                                     new Pose(88.140, 18.388)
                             )
-                    )
-                    .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(70))
+                    ).setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(70))
                     .build();
 
-            IntakeB = follower.pathBuilder()
-                    .addPath(
+            IntakeB = follower.pathBuilder().addPath(
                             new BezierCurve(
                                     new Pose(88.140, 18.388),
                                     new Pose(92.409, 55.571),
                                     new Pose(123.494, 56.635)
                             )
-                    )
-                    .setTangentHeadingInterpolation()
+                    ).setTangentHeadingInterpolation()
                     .build();
 
-            shoot2 = follower.pathBuilder()
-                    .addPath(
+            shoot2 = follower.pathBuilder().addPath(
                             new BezierLine(
                                     new Pose(123.494, 56.635),
                                     new Pose(88.200, 18.388)
                             )
-                    )
-                    .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(70))
+                    ).setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(70))
                     .build();
 
-            IntakeC = follower.pathBuilder()
-                    .addPath(
+            Path6 = follower.pathBuilder().addPath(
                             new BezierLine(
                                     new Pose(88.200, 18.388),
-                                    new Pose(133.676, 11.386)
+                                    new Pose(111.194, 18.751)
                             )
-                    )
-                    .setConstantHeadingInterpolation(Math.toRadians(350))
-                    .build();
-
-            shoot3 = follower.pathBuilder()
-                    .addPath(
-                            new BezierLine(
-                                    new Pose(133.676, 11.386),
-                                    new Pose(88.200, 18.388)
-                            )
-                    )
-                    .setLinearHeadingInterpolation(Math.toRadians(350), Math.toRadians(70))
-                    .build();
-
-            PARK = follower.pathBuilder()
-                    .addPath(
-                            new BezierLine(
-                                    new Pose(88.200, 18.388),
-                                    new Pose(107.992, 16.131)
-                            )
-                    )
-                    .setLinearHeadingInterpolation(Math.toRadians(70), Math.toRadians(90))
+                    ).setLinearHeadingInterpolation(Math.toRadians(70), Math.toRadians(90))
                     .build();
         }
     }

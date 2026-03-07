@@ -29,18 +29,18 @@ public class Shooter {
 
     // Simple preset velocities (you can tune)
     public static double near = 1150;
-    public static double far  = 1420;
+    public static double far  = 1350;
     public static double shootstop = 0;
 
     // At-speed tolerance
-    public static double VELOCITY_TOLERANCE = 50;
+    public static double VELOCITY_TOLERANCE = 100;
 
     // Safety cap
     public static double MAX_TICKS_PER_SEC = 1500;
 
     // Claw positions
-    public static double OPEN_POSITION   = 0;
-    public static double CLOSED_POSITION = 1;
+    public static double OPEN_POSITION   = 0.28;
+    public static double CLOSED_POSITION = 0.95;
 
     private boolean activated  = true;
     private boolean clawClosed = true;

@@ -16,7 +16,7 @@ public class Intake {
     private final DcMotorEx motor;
 
     public static double OFF  = 0.0;
-    public static double IDLE = 0.0;
+    public static double IDLE = 0;
     public static double IN   = 1.0;
     public static double OUT  = -1.0;
 

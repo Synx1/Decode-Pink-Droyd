@@ -10,15 +10,15 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.seattlesolvers.solverslib.photon.PhotonCore;
+
 import org.firstinspires.ftc.teamcode.SubSystem.Intake;
+import org.firstinspires.ftc.teamcode.SubSystem.LLtrack;
 import org.firstinspires.ftc.teamcode.SubSystem.Shooter;
-import org.firstinspires.ftc.teamcode.SubSystem.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "RedCloseODo", group = "Autonomous")
+@Autonomous(name = "RedFar", group = "Autonomous")
 @Configurable
-public class RedCloseODo extends OpMode {
+public class RedFar extends OpMode {
 
     private TelemetryManager panelsTelemetry;
     public Follower follower;
@@ -26,35 +26,32 @@ public class RedCloseODo extends OpMode {
 
     private Shooter shooter;
     private Intake intake;
-    private Turret turret;
+    private LLtrack llTrack;
 
-    // Target pose for shooting (basket position for red alliance)
-    private static final Pose BASKET_POSE = new Pose(140, 143);
-
+    // ── State Machine ──────────────────────────────────────────────
     private enum State {
         SHOOT0_PATH,
         SHOOT0_TRACK,
         SHOOT0_DUMP,
 
-        IntakeA_PATH,
-        STOP_INTAKING_PATH,
-        STOP_INTAKING_WAIT,
+        INTAKE_A_PATH,
+        INTAKE_A_STOP,
 
         SHOOT1_INTAKE_PRE,
         SHOOT1_PATH,
         SHOOT1_TRACK,
         SHOOT1_DUMP,
 
-        IntakeB_PATH,
-        IntakeB_STOP,
+        INTAKE_B_PATH,
+        INTAKE_B_STOP,
 
         SHOOT2_INTAKE_PRE,
         SHOOT2_PATH,
         SHOOT2_TRACK,
         SHOOT2_DUMP,
 
-        IntakeC_PATH,
-        IntakeC_STOP,
+        INTAKE_C_PATH,
+        INTAKE_C_STOP,
 
         SHOOT3_INTAKE_PRE,
         SHOOT3_PATH,
@@ -69,26 +66,25 @@ public class RedCloseODo extends OpMode {
     private long stateStartMs       = 0;
     private long lastLoopMs         = 0;
     private long shooterStableStart = 0;
-    private long turretStableStart  = 0;
 
+    // ── Init ───────────────────────────────────────────────────────
     @Override
     public void init() {
         panelsTelemetry = PanelsTelemetry.INSTANCE.getTelemetry();
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(110.863, 132.694, Math.toRadians(90)));
+        follower.setStartingPose(new Pose(86.760, 9.063, Math.toRadians(90)));
 
         shooter = new Shooter(hardwareMap);
         intake  = new Intake(hardwareMap);
-        turret  = new Turret(hardwareMap);
+        llTrack = new LLtrack(hardwareMap, false); // false = red alliance
 
         paths = new Paths(follower);
 
-        shooter.shootNear();
+        shooter.shootFar();
         shooter.clawClose();
         intake.spinIdle();
-        turret.on();
-        turret.resetTurret();
+        llTrack.setAlliance(false);
 
         lastLoopMs   = System.currentTimeMillis();
         stateStartMs = lastLoopMs;
@@ -105,6 +101,7 @@ public class RedCloseODo extends OpMode {
         lastLoopMs   = stateStartMs;
     }
 
+    // ── Main Loop ──────────────────────────────────────────────────
     @Override
     public void loop() {
         long now = System.currentTimeMillis();
@@ -112,61 +109,52 @@ public class RedCloseODo extends OpMode {
         lastLoopMs = now;
 
         shooter.periodic();
-        turret.periodic();
         follower.update();
 
         switch (state) {
 
-            // ── SHOOT0 ─────────────────────────────────────────────
             case SHOOT0_PATH:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
+                    llTrack.setAlliance(false);
                     transition(State.SHOOT0_TRACK, now);
                 }
                 break;
 
-            case SHOOT0_TRACK:
-                turret.face(BASKET_POSE, follower.getPose());
-                if (turretReady(now) && shooterReady(now)) {
+            case SHOOT0_TRACK: {
+                boolean locked = llTrack.update(true, dt);
+                if (locked && shooterReady(now)) {
                     intake.spinIn();
                     transition(State.SHOOT0_DUMP, now);
                 }
                 break;
+            }
 
             case SHOOT0_DUMP:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(true, dt);
                 if (elapsed(now) >= 2000) {
                     intake.spinIdle();
                     shooter.clawClose();
-                    turret.resetTurret();  // Return turret to home position
-                    follower.followPath(paths.IntakeA);
+                    follower.followPath(paths.Intake_A);
                     intake.spinIn();
-                    transition(State.IntakeA_PATH, now);
+                    transition(State.INTAKE_A_PATH, now);
                 }
                 break;
 
-            // ── IntakeA ───────────────────────────────────────────
-            case IntakeA_PATH:
+            case INTAKE_A_PATH:
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     intake.spinIdle();
-                    follower.followPath(paths.StopIntaking);
-                    transition(State.STOP_INTAKING_PATH, now);
+                    transition(State.INTAKE_A_STOP, now);
                 }
                 break;
 
-            case STOP_INTAKING_PATH:
-                if (!follower.isBusy()) {
-                    transition(State.STOP_INTAKING_WAIT, now);
-                }
-                break;
-
-            case STOP_INTAKING_WAIT:
+            case INTAKE_A_STOP:
                 intake.spinIn();
                 transition(State.SHOOT1_INTAKE_PRE, now);
                 break;
 
-            // ── SHOOT1 ─────────────────────────────────────────────
             case SHOOT1_INTAKE_PRE:
                 if (elapsed(now) >= 1500) {
                     intake.spinIdle();
@@ -176,47 +164,47 @@ public class RedCloseODo extends OpMode {
                 break;
 
             case SHOOT1_PATH:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
+                    llTrack.setAlliance(false);
                     transition(State.SHOOT1_TRACK, now);
                 }
                 break;
 
-            case SHOOT1_TRACK:
-                turret.face(BASKET_POSE, follower.getPose());
-                if (turretReady(now) && shooterReady(now)) {
+            case SHOOT1_TRACK: {
+                boolean locked = llTrack.update(true, dt);
+                if (locked && shooterReady(now)) {
                     intake.spinIn();
                     transition(State.SHOOT1_DUMP, now);
                 }
                 break;
+            }
 
             case SHOOT1_DUMP:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(true, dt);
                 if (elapsed(now) >= 2000) {
                     intake.spinIdle();
                     shooter.clawClose();
-                    turret.resetTurret();
-                    follower.followPath(paths.IntakeB);
+                    follower.followPath(paths.Intake_B);
                     intake.spinIn();
-                    transition(State.IntakeB_PATH, now);
+                    transition(State.INTAKE_B_PATH, now);
                 }
                 break;
 
-            // ── IntakeB ───────────────────────────────────────────
-            case IntakeB_PATH:
+            case INTAKE_B_PATH:
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     intake.spinIdle();
-                    transition(State.IntakeB_STOP, now);
+                    transition(State.INTAKE_B_STOP, now);
                 }
                 break;
 
-            case IntakeB_STOP:
+            case INTAKE_B_STOP:
                 intake.spinIn();
                 transition(State.SHOOT2_INTAKE_PRE, now);
                 break;
 
-            // ── SHOOT2 ─────────────────────────────────────────────
             case SHOOT2_INTAKE_PRE:
                 if (elapsed(now) >= 1500) {
                     intake.spinIdle();
@@ -226,47 +214,47 @@ public class RedCloseODo extends OpMode {
                 break;
 
             case SHOOT2_PATH:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
+                    llTrack.setAlliance(false);
                     transition(State.SHOOT2_TRACK, now);
                 }
                 break;
 
-            case SHOOT2_TRACK:
-                turret.face(BASKET_POSE, follower.getPose());
-                if (turretReady(now) && shooterReady(now)) {
+            case SHOOT2_TRACK: {
+                boolean locked = llTrack.update(true, dt);
+                if (locked && shooterReady(now)) {
                     intake.spinIn();
                     transition(State.SHOOT2_DUMP, now);
                 }
                 break;
+            }
 
             case SHOOT2_DUMP:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(true, dt);
                 if (elapsed(now) >= 2000) {
                     intake.spinIdle();
                     shooter.clawClose();
-                    turret.resetTurret();
-                    follower.followPath(paths.IntakeC);
+                    follower.followPath(paths.Intake_C);
                     intake.spinIn();
-                    transition(State.IntakeC_PATH, now);
+                    transition(State.INTAKE_C_PATH, now);
                 }
                 break;
 
-            // ── IntakeC ───────────────────────────────────────────
-            case IntakeC_PATH:
+            case INTAKE_C_PATH:
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     intake.spinIdle();
-                    transition(State.IntakeC_STOP, now);
+                    transition(State.INTAKE_C_STOP, now);
                 }
                 break;
 
-            case IntakeC_STOP:
+            case INTAKE_C_STOP:
                 intake.spinIn();
                 transition(State.SHOOT3_INTAKE_PRE, now);
                 break;
 
-            // ── SHOOT3 ─────────────────────────────────────────────
             case SHOOT3_INTAKE_PRE:
                 if (elapsed(now) >= 1500) {
                     intake.spinIdle();
@@ -276,42 +264,43 @@ public class RedCloseODo extends OpMode {
                 break;
 
             case SHOOT3_PATH:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     shooter.clawOpen();
+                    llTrack.setAlliance(false);
                     transition(State.SHOOT3_TRACK, now);
                 }
                 break;
 
-            case SHOOT3_TRACK:
-                turret.face(BASKET_POSE, follower.getPose());
-                if (turretReady(now) && shooterReady(now)) {
+            case SHOOT3_TRACK: {
+                boolean locked = llTrack.update(true, dt);
+                if (locked && shooterReady(now)) {
                     intake.spinIn();
                     transition(State.SHOOT3_DUMP, now);
                 }
                 break;
+            }
 
             case SHOOT3_DUMP:
-                turret.face(BASKET_POSE, follower.getPose());
+                llTrack.update(true, dt);
                 if (elapsed(now) >= 2000) {
                     intake.spinIdle();
                     shooter.clawClose();
-                    turret.resetTurret();
                     follower.followPath(paths.Park);
                     transition(State.PARK, now);
                 }
                 break;
 
-            // ── PARK / DONE ────────────────────────────────────────
             case PARK:
+                llTrack.update(false, dt);
                 if (!follower.isBusy()) {
                     transition(State.DONE, now);
                 }
                 break;
 
             case DONE:
+                llTrack.update(false, dt);
                 intake.spinIdle();
-                turret.off();
                 break;
         }
 
@@ -319,10 +308,8 @@ public class RedCloseODo extends OpMode {
         panelsTelemetry.debug("Shooter Target", shooter.getTarget());
         panelsTelemetry.debug("Shooter Vel",    shooter.getVelocity());
         panelsTelemetry.debug("Shooter AtSpd",  shooter.atTarget());
-        panelsTelemetry.debug("Turret",         turret.getTelemetryString());
         panelsTelemetry.debug("X",  follower.getPose().getX());
         panelsTelemetry.debug("Y",  follower.getPose().getY());
-        panelsTelemetry.debug("H",  Math.toDegrees(follower.getPose().getHeading()));
         panelsTelemetry.update(telemetry);
     }
 
@@ -331,7 +318,6 @@ public class RedCloseODo extends OpMode {
         state              = next;
         stateStartMs       = now;
         shooterStableStart = 0;
-        turretStableStart  = 0;
     }
 
     private long elapsed(long now) {
@@ -347,94 +333,87 @@ public class RedCloseODo extends OpMode {
         return (now - shooterStableStart) > 200;
     }
 
-    private boolean turretReady(long now) {
-        if (!turret.isReady()) {
-            turretStableStart = 0;
-            return false;
-        }
-        if (turretStableStart == 0) turretStableStart = now;
-        return (now - turretStableStart) > 200;
-    }
-
     // ── Paths ──────────────────────────────────────────────────────
     public static class Paths {
+
         public PathChain Shoot0;
-        public PathChain IntakeA;
-        public PathChain StopIntaking;
+        public PathChain Intake_A;
         public PathChain Shoot1;
-        public PathChain IntakeB;
+        public PathChain Intake_B;
         public PathChain Shoot2;
-        public PathChain IntakeC;
+        public PathChain Intake_C;
         public PathChain Shoot3;
         public PathChain Park;
 
         public Paths(Follower follower) {
-            Shoot0 = follower.pathBuilder().addPath(
-                    new BezierLine(
-                            new Pose(110.863, 132.694),
-                            new Pose(83.992, 89.898)
-                    )
-            ).setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(50)).build();
 
-            IntakeA = follower.pathBuilder().addPath(
-                    new BezierCurve(
-                            new Pose(83.992, 89.898),
-                            new Pose(107.675, 81.665),
-                            new Pose(125.838, 81.043)
-                    )
-            ).setTangentHeadingInterpolation().build();
+            Shoot0 = follower.pathBuilder()
+                    .addPath(new BezierLine(
+                            new Pose(86.760, 9.063),
+                            new Pose(85.875, 22.362)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(70))
+                    .build();
 
-            StopIntaking = follower.pathBuilder().addPath(
-                    new BezierCurve(
-                            new Pose(125.838, 81.043),
-                            new Pose(111.308, 78.611),
-                            new Pose(124.250, 71.511)
-                    )
-            ).setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0)).build();
+            Intake_A = follower.pathBuilder()
+                    .addPath(new BezierCurve(
+                            new Pose(85.875, 22.362),
+                            new Pose(99.701, 37.375),
+                            new Pose(124.646, 35.978)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(70), Math.toRadians(0))
+                    .build();
 
-            Shoot1 = follower.pathBuilder().addPath(
-                    new BezierLine(
-                            new Pose(124.250, 71.511),
-                            new Pose(83.992, 89.800)
-                    )
-            ).setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(50)).build();
+            Shoot1 = follower.pathBuilder()
+                    .addPath(new BezierLine(
+                            new Pose(124.646, 35.978),
+                            new Pose(85.875, 22.362)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(70))
+                    .build();
 
-            IntakeB = follower.pathBuilder().addPath(
-                    new BezierCurve(
-                            new Pose(83.992, 89.800),
-                            new Pose(80.660, 59.867),
-                            new Pose(128.237, 54.086)
-                    )
-            ).setLinearHeadingInterpolation(Math.toRadians(50), Math.toRadians(0)).build();
+            Intake_B = follower.pathBuilder()
+                    .addPath(new BezierCurve(
+                            new Pose(85.875, 22.362),
+                            new Pose(89.317, 60.480),
+                            new Pose(125.756, 59.661)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(70), Math.toRadians(0))
+                    .build();
 
-            Shoot2 = follower.pathBuilder().addPath(
-                    new BezierLine(
-                            new Pose(128.237, 54.086),
-                            new Pose(83.992, 89.898)
-                    )
-            ).setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(50)).build();
+            Shoot2 = follower.pathBuilder()
+                    .addPath(new BezierLine(
+                            new Pose(125.756, 59.661),
+                            new Pose(85.875, 22.362)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(70))
+                    .build();
 
-            IntakeC = follower.pathBuilder().addPath(
-                    new BezierCurve(
-                            new Pose(83.992, 89.898),
-                            new Pose(87.634, 35.851),
-                            new Pose(125.251, 32.393)
-                    )
-            ).setTangentHeadingInterpolation().build();
+            Intake_C = follower.pathBuilder()
+                    .addPath(new BezierCurve(
+                            new Pose(85.875, 22.362),
+                            new Pose(84.841, 86.435),
+                            new Pose(123.642, 84.166)
+                    ))
+                    .setTangentHeadingInterpolation()
+                    .build();
 
-            Shoot3 = follower.pathBuilder().addPath(
-                    new BezierLine(
-                            new Pose(125.251, 32.393),
-                            new Pose(83.992, 89.898)
-                    )
-            ).setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(50)).build();
+            Shoot3 = follower.pathBuilder()
+                    .addPath(new BezierLine(
+                            new Pose(123.642, 84.166),
+                            new Pose(86.166, 22.343)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(70))
+                    .build();
 
-            Park = follower.pathBuilder().addPath(
-                    new BezierLine(
-                            new Pose(83.992, 89.898),
-                            new Pose(113.180, 71.900)
-                    )
-            ).setLinearHeadingInterpolation(Math.toRadians(50), Math.toRadians(90)).build();
+            Park = follower.pathBuilder()
+                    .addPath(new BezierLine(
+                            new Pose(86.166, 22.343),
+                            new Pose(110.465, 22.708)
+                    ))
+                    .setLinearHeadingInterpolation(Math.toRadians(70), Math.toRadians(90))
+                    .build();
         }
     }
 }
+

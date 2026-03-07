@@ -8,7 +8,7 @@ import java.util.Locale;
 public class servo {
     private final Servo claw;
 
-    private static final double OPEN_POSITION = 0.4;
+    private static final double OPEN_POSITION = 0.9;
     private static final double CLOSED_POSITION = 1.0;
 
     private boolean isOpen = false;

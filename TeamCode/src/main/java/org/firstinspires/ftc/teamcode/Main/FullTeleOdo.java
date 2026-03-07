@@ -1,23 +1,18 @@
 package org.firstinspires.ftc.teamcode.Main;
 
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.BLUE_CORNER_RESET;
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.BLUE_GOAL;
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.RED_CORNER_RESET;
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.RED_GOAL;
-
 import com.acmerobotics.dashboard.config.Config;
-import com.pedropathing.geometry.Pose;
-import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.Gamepad;
-import com.seattlesolvers.solverslib.photon.PhotonCore;
+import com.pedropathing.geometry.Pose;
 
 import org.firstinspires.ftc.teamcode.SubSystem.DriveTrain;
 import org.firstinspires.ftc.teamcode.SubSystem.Intake;
 import org.firstinspires.ftc.teamcode.SubSystem.MathUtilities;
 import org.firstinspires.ftc.teamcode.SubSystem.Shooter;
 import org.firstinspires.ftc.teamcode.SubSystem.Turret;
+
+import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.*;
 
 @TeleOp(name = "FullTeleOdo", group = "Main")
 @Config
@@ -34,46 +29,26 @@ public class FullTeleOdo extends OpMode {
     private boolean lastOptionsPressed      = false;
     private boolean lastRightTriggerPressed = false;
 
-    // D-pad edge detection for shooter presets
     private boolean lastDpadUp   = false;
     private boolean lastDpadDown = false;
 
-    // Loop timing
     private double lastLoopTimestamp = 0;
     private double lastLoopTime      = 0;
 
-    // ============================
-    // Shooter presets (ticks/sec)
-    // ============================
-    public static double PRESET_NEAR = 1300; // tune in Dashboard
-    public static double PRESET_FAR  = 1550; // tune in Dashboard
+    public static double PRESET_NEAR = 1300;
+    public static double PRESET_FAR  = 1550;
 
-    private boolean usingFar = false; // false = NEAR, true = FAR
+    private boolean usingFar = false;
 
     @Override
     public void init() {
-        // ============================
-        // PHOTON SETUP (DO THIS FIRST)
-        // ============================
-        // IMPORTANT: Photon requires hubs connected via USB (NOT RS485).
-        PhotonCore.CONTROL_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
-        PhotonCore.EXPANSION_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
-
-        // Keep true ONLY if your servo power is Photon-compatible (direct hub ports / goBILDA injector).
-        // If using REV Servo Hub / external non-USB servo power device, set false.
-        PhotonCore.PARALLELIZE_SERVOS = true;
-
-        // Optional tuning (docs recommend 8; raising too high can cause issues)
-        PhotonCore.experimental.setMaximumParallelCommands(8);
-
-        PhotonCore.enable();
-        // Requested start pose
+        // ── Match your actual start tile here ──
         Pose startPose = new Pose(64.0, 8.0, Math.toRadians(90));
 
         driveTrain = new DriveTrain(hardwareMap, startPose);
         shooter    = new Shooter(hardwareMap);
         intake     = new Intake(hardwareMap);
-        turret     = new Turret(hardwareMap);
+        turret     = new Turret(hardwareMap, driveTrain.getFollower());
 
         isBlue   = true;
         goalPose = BLUE_GOAL;
@@ -81,14 +56,12 @@ public class FullTeleOdo extends OpMode {
         shooter.off();
         intake.spinOff();
         turret.on();
-        turret.resetTurret(); // Set home to 0°
 
-        // Default shooter preset: NEAR
         usingFar = false;
         shooter.setTarget(PRESET_NEAR);
 
         telemetry.addLine("Init: D-Pad LEFT = BLUE, RIGHT = RED");
-        telemetry.addLine("L2 = odo auto-aim turret | turret goes home when not aiming");
+        telemetry.addLine("L2 = odo auto-aim turret (release = return home)");
         telemetry.addLine("D-Pad UP = FAR preset, DOWN = NEAR preset");
         telemetry.update();
     }
@@ -97,7 +70,6 @@ public class FullTeleOdo extends OpMode {
     public void init_loop() {
         Gamepad gp = gamepad1;
 
-        // Alliance select
         if (gp.dpad_left)  isBlue = true;
         if (gp.dpad_right) isBlue = false;
 
@@ -122,42 +94,37 @@ public class FullTeleOdo extends OpMode {
 
         Gamepad gp = gamepad1;
 
-        // ===== DRIVE (ODO) =====
+        // ===== DRIVE =====
         driveTrain.periodic();
         driveTrain.drive(gp);
 
-        Pose robotPose = driveTrain.getPose(); // heading in radians
+        // Get live odo pose AFTER follower.update() inside periodic()
+        Pose robotPose = driveTrain.getPose();
 
         // ===== INTAKE =====
         if (gp.right_bumper)      intake.spinIn();
         else if (gp.left_bumper)  intake.spinOut();
         else                      intake.spinOff();
 
-        // ===== TURRET (ODO AUTO-AIM OR HOME) =====
+        // ===== TURRET AUTO-AIM or RETURN HOME =====
+        // L2 held → face goal using live odo pose
+        // L2 released → return to init home position
         boolean autoAim = gp.left_trigger > 0.5;
-
         if (autoAim) {
-            // Auto-aim to goal using odometry
-            turret.automatic();
-            turret.face(goalPose, robotPose); // pure odo aiming
+            turret.face(goalPose, robotPose); // explicit pose so it uses the freshest odo reading
         } else {
-            // Return to home (0°) when not aiming
-            turret.automatic();
-            turret.resetTurret(); // Sets target to 0°
+            turret.goHome();
         }
-
         turret.periodic();
 
-        // ===== SHOOTER PRESETS (NEAR / FAR) =====
+        // ===== SHOOTER PRESETS =====
         boolean dpadUp   = gp.dpad_up;
         boolean dpadDown = gp.dpad_down;
 
-        // D-pad UP -> FAR
         if (dpadUp && !lastDpadUp) {
             usingFar = true;
             shooter.setTarget(PRESET_FAR);
         }
-        // D-pad DOWN -> NEAR
         if (dpadDown && !lastDpadDown) {
             usingFar = false;
             shooter.setTarget(PRESET_NEAR);
@@ -166,7 +133,6 @@ public class FullTeleOdo extends OpMode {
         lastDpadUp   = dpadUp;
         lastDpadDown = dpadDown;
 
-        // Shooter on/off with R2 (edge-detected)
         boolean rightTriggerPressed = gp.right_trigger > 0.5;
         if (rightTriggerPressed && !lastRightTriggerPressed) {
             shooter.shooterToggle();
@@ -179,7 +145,7 @@ public class FullTeleOdo extends OpMode {
         if (gp.x) shooter.clawOpen();
         else      shooter.clawClose();
 
-        // ===== CORNER RESET (OPTIONS) =====
+        // ===== CORNER RESET =====
         boolean optionsPressed = gp.options;
         if (optionsPressed && !lastOptionsPressed) {
             Pose cornerPose = isBlue ? BLUE_CORNER_RESET : RED_CORNER_RESET;
@@ -193,18 +159,17 @@ public class FullTeleOdo extends OpMode {
         double distanceToGoal = MathUtilities.distance(robotPose, goalPose);
 
         telemetry.addData("Alliance", isBlue ? "BLUE" : "RED");
-        telemetry.addData("Robot", "X %.1f  Y %.1f  H %.2f rad",
-                robotPose.getX(), robotPose.getY(), robotPose.getHeading());
+        telemetry.addData("Robot", "X %.1f  Y %.1f  H %.2f°",
+                robotPose.getX(), robotPose.getY(), Math.toDegrees(robotPose.getHeading()));
         telemetry.addData("Goal", "X %.1f  Y %.1f", goalPose.getX(), goalPose.getY());
-
         telemetry.addData("Dist(in)", "%.1f", distanceToGoal);
 
         telemetry.addData("Turret", turret.getTelemetryString());
         telemetry.addData("Turret Auto(L2)", autoAim);
 
         telemetry.addData("Shooter Preset", usingFar ? "FAR" : "NEAR");
-        telemetry.addData("Shooter Target", shooter.getTarget());
-        telemetry.addData("Shooter Vel", shooter.getVelocity());
+        telemetry.addData("Shooter Target",  shooter.getTarget());
+        telemetry.addData("Shooter Vel",     shooter.getVelocity());
         telemetry.addData("Shooter AtSpeed", shooter.atTarget());
 
         telemetry.addData("Loop ms", "%.2f", lastLoopTime * 1000.0);

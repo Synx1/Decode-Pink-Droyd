@@ -1,23 +1,18 @@
 package org.firstinspires.ftc.teamcode.Main;
 
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.BLUE_CORNER_RESET;
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.BLUE_GOAL;
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.RED_CORNER_RESET;
-import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.RED_GOAL;
-
 import com.acmerobotics.dashboard.config.Config;
-import com.pedropathing.geometry.Pose;
-import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.Gamepad;
-import com.seattlesolvers.solverslib.photon.PhotonCore;
+import com.pedropathing.geometry.Pose;
 
 import org.firstinspires.ftc.teamcode.SubSystem.DriveTrain;
 import org.firstinspires.ftc.teamcode.SubSystem.Intake;
 import org.firstinspires.ftc.teamcode.SubSystem.LLtrack;
 import org.firstinspires.ftc.teamcode.SubSystem.MathUtilities;
 import org.firstinspires.ftc.teamcode.SubSystem.Shooter;
+
+import static org.firstinspires.ftc.teamcode.SubSystem.FieldConstants.*;
 
 @TeleOp(name = "FullTeleSimple", group = "Main")
 @Config
@@ -26,7 +21,7 @@ public class FullTeleSimple extends OpMode {
     private DriveTrain driveTrain;
     private Shooter shooter;
     private Intake intake;
-    private LLtrack llTrack;
+    private LLtrack llTrack; // Turret + tx alignment (Limelight)
 
     // Alliance / goal selection
     private boolean isBlue = true;
@@ -36,7 +31,7 @@ public class FullTeleSimple extends OpMode {
     private boolean lastOptionsPressed = false;
     private boolean lastRightTriggerPressed = false;
 
-    // D-pad edge detection (for presets during OpMode)
+    // D-pad edge detection (for presets during opmode)
     private boolean lastDpadLeft = false;
     private boolean lastDpadRight = false;
 
@@ -47,7 +42,7 @@ public class FullTeleSimple extends OpMode {
     // ============================
     // Shooter Presets (ticks/sec)
     // ============================
-    public static double PRESET_NEAR    = 1150;
+    public static double PRESET_NEAR    = 1300;
     public static double PRESET_MIDNEAR = 1350;
     public static double PRESET_FARNEAR = 1400;
     public static double PRESET_FAR     = 1450;
@@ -61,9 +56,8 @@ public class FullTeleSimple extends OpMode {
             case 1: return PRESET_MIDNEAR;
             case 2: return PRESET_FARNEAR;
             case 3: return PRESET_FAR;
-            case 4:
-            default:
-                return PRESET_FARFAR;
+            case 4: return PRESET_FARFAR;
+            default: return PRESET_FARFAR;
         }
     }
 
@@ -73,33 +67,14 @@ public class FullTeleSimple extends OpMode {
             case 1: return "MIDNEAR";
             case 2: return "FARNEAR";
             case 3: return "FAR";
-            case 4:
-            default:
-                return "FARFAR";
+            case 4: return "FARFAR";
+            default: return "FARFAR";
         }
     }
 
     @Override
     public void init() {
-        // ============================
-        // PHOTON SETUP (DO THIS FIRST)
-        // ============================
-        // IMPORTANT: Photon requires hubs connected via USB (NOT RS485).
-        PhotonCore.CONTROL_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL); //k
-        PhotonCore.EXPANSION_HUB.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
-
-        // Keep true ONLY if your servo power is Photon-compatible (direct hub ports / goBILDA injector).
-        // If using REV Servo Hub / external non-USB servo power device, set false.
-        PhotonCore.PARALLELIZE_SERVOS = true;
-
-        // Optional tuning (docs recommend 8; raising too high can cause issues)
-        PhotonCore.experimental.setMaximumParallelCommands(8);
-
-        PhotonCore.enable();
-
-        // ============================
-        // SUBSYSTEMS
-        // ============================
+        // Heading in radians for Pedro Pose
         Pose startPose = new Pose(64.0, 8.0, Math.toRadians(90));
 
         driveTrain = new DriveTrain(hardwareMap, startPose);
@@ -124,10 +99,6 @@ public class FullTeleSimple extends OpMode {
 
     @Override
     public void init_loop() {
-        // Clear caches every loop to avoid stale reads in MANUAL caching
-        PhotonCore.CONTROL_HUB.clearBulkCache();
-        PhotonCore.EXPANSION_HUB.clearBulkCache();
-
         Gamepad gp = gamepad1;
 
         // Alliance selection before START
@@ -140,7 +111,7 @@ public class FullTeleSimple extends OpMode {
 
         telemetry.addData("Alliance", isBlue ? "BLUE" : "RED");
         telemetry.addData("Goal", "X: %.1f, Y: %.1f", goalPose.getX(), goalPose.getY());
-        telemetry.addData("Turret Yaw (deg)", "%.1f", Math.toDegrees(llTrack.getCurrentYaw()));
+        telemetry.addData("Turret Home Ticks", llTrack.getHomePositionTicks());
         telemetry.update();
     }
 
@@ -152,17 +123,14 @@ public class FullTeleSimple extends OpMode {
 
     @Override
     public void loop() {
-        // Clear caches FIRST in every single run loop (MANUAL bulk caching rule)
-        PhotonCore.CONTROL_HUB.clearBulkCache();
-        PhotonCore.EXPANSION_HUB.clearBulkCache();
-
         updateLoopTime();
         Gamepad gp = gamepad1;
 
-        // ====== DRIVETRAIN ======
+        // ====== DRIVETRAIN (PINPOINT ODO ONLY) ======
         driveTrain.periodic();
         driveTrain.drive(gp);
 
+        // Current odometry pose from Pinpoint/Pedro
         Pose robotPose = driveTrain.getPose();
 
         // ====== INTAKE ======
@@ -174,11 +142,14 @@ public class FullTeleSimple extends OpMode {
             intake.spinOff();
         }
 
-        // ====== TURRET / LL TRACKING ======
+        // ====== TURRET / LL TRACKING (LIMELIGHT ONLY FOR ALIGNMENT) ======
         boolean tracking = gp.left_trigger > 0.5;
         boolean turretAligned = llTrack.update(tracking, lastLoopTime);
 
-        // ====== SHOOTER PRESET CONTROL ======
+        // =========================================================
+        // SHOOTER PRESET CONTROL
+        // D-pad LEFT/RIGHT cycles presets DURING OPMODE
+        // =========================================================
         boolean dpadLeft = gp.dpad_left;
         boolean dpadRight = gp.dpad_right;
 
@@ -224,7 +195,7 @@ public class FullTeleSimple extends OpMode {
         lastOptionsPressed = optionsPressed;
 
         // ====== TELEMETRY ======
-        double distanceToGoal = MathUtilities.distance(robotPose, goalPose);
+        double distanceToGoal = MathUtilities.distance(robotPose, goalPose); // for display only
 
         telemetry.addData("Alliance", isBlue ? "BLUE" : "RED");
         telemetry.addData("Goal", "X: %.1f, Y: %.1f", goalPose.getX(), goalPose.getY());
@@ -237,17 +208,11 @@ public class FullTeleSimple extends OpMode {
         telemetry.addData("Shooter Target (t/s)", "%.0f", getPresetValue(presetIndex));
         telemetry.addData("Shooter Velocity (t/s)", "%.0f", shooter.getVelocity());
 
-        telemetry.addData("Turret Yaw (deg)", "%.1f", Math.toDegrees(llTrack.getCurrentYaw()));
-        telemetry.addData("Turret Last Good (deg)", "%.1f", Math.toDegrees(llTrack.getLastGoodPositionRadians()));
+        telemetry.addData("Turret Home Ticks", llTrack.getHomePositionTicks());
+        telemetry.addData("Turret Current Ticks", llTrack.getCurrentTicks());
         telemetry.addData("Turret Tracking (L2)", tracking);
         telemetry.addData("Turret Aligned", turretAligned);
-
-        Double allianceTx = llTrack.getAllianceTx();
-        if (allianceTx != null) {
-            telemetry.addData("Alliance Tag Tx (deg)", "%.1f", allianceTx);
-        } else {
-            telemetry.addData("Alliance Tag Tx (deg)", "NO TAG");
-        }
+        telemetry.addData("Alliance Tag Tx (deg)", "%.1f", llTrack.getAllianceTx());
 
         telemetry.addData("Loop Time (ms)", "%.3f", lastLoopTime * 1000.0);
         telemetry.addData("Loop Hz", "%.1f", (lastLoopTime > 0) ? 1.0 / lastLoopTime : 0.0);

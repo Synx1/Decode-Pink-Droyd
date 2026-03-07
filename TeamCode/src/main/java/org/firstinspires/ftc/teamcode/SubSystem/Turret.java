@@ -1,48 +1,63 @@
 package org.firstinspires.ftc.teamcode.SubSystem;
 
 import com.acmerobotics.dashboard.config.Config;
+import com.pedropathing.control.PIDFCoefficients;
+import com.pedropathing.control.PIDFController;
+import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.seattlesolvers.solverslib.controller.PIDFController;
 
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 
 import java.util.Locale;
 
-
 @Config
 public class Turret {
     private final DcMotorEx motor;
-    private PIDFController pidfController;
+    private final Follower follower;
 
-    public static double kP = 0.0045;
-    public static double kI = 0.0;
-    public static double kD = 0.0003;
-    public static double kF = 0.0;
-
+    // ── Radians per tick ──
     public static double rpt = 0.0029919;
 
-    public static double maxPower = .5;
+    // ── Coarse PIDF (large error, |error| > pidfSwitch) ──
+    public static double kP = 0.003;
+    public static double kD = 0.0;
+    public static double kF = 0.0;
 
-    private double targetYaw = 0.0;
-    private boolean isOn = true;
-    private boolean manualMode = false;
-    private double manualPower = 0.0;
+    // ── Fine PIDF (settling, |error| <= pidfSwitch) ──
+    public static double sP = 0.005;
+    public static double sD = 0.0001;
+    public static double sF = 0.0;
 
-    private int homePosition = 0;
+    // ── Tick threshold to switch controllers ──
+    public static double pidfSwitch = 30;
 
-    public Turret(HardwareMap hardwareMap) {
+    private PIDFController coarse;
+    private PIDFController fine;
+
+    private double targetTicks       = 0.0;
+    private double homePositionTicks = 0.0;
+    private double error             = 0.0;
+    private double power             = 0.0;
+
+    private boolean isOn        = true;
+    private boolean isManual    = false;
+    private double  manualPower = 0.0;
+
+    public Turret(HardwareMap hardwareMap, Follower follower) {
         motor = hardwareMap.get(DcMotorEx.class, "TT");
-        motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        motor.setPower(0);
 
-        homePosition = motor.getCurrentPosition();
-        targetYaw = 0.0;
+        this.follower = follower;
 
-        // Initialize PIDF controller
-        pidfController = new PIDFController(kP, kI, kD, kF);
+        coarse = new PIDFController(new PIDFCoefficients(kP, 0, kD, kF));
+        fine   = new PIDFController(new PIDFCoefficients(sP, 0, sD, sF));
+
+        captureHomePosition();
     }
 
     public void periodic() {
@@ -51,29 +66,98 @@ public class Turret {
             return;
         }
 
-        if (manualMode) {
+        if (isManual) {
             motor.setPower(manualPower);
             return;
         }
 
-        // Update PIDF coefficients from dashboard
-        pidfController.setPIDF(kP, kI, kD, kF);
+        // Re-apply gains each loop so Dashboard changes take effect
+        coarse.setCoefficients(new PIDFCoefficients(kP, 0, kD, kF));
+        fine.setCoefficients(new PIDFCoefficients(sP, 0, sD, sF));
 
-        // Target position in encoder ticks
-        double targetPositionTicks = homePosition + (targetYaw / rpt);
+        error = targetTicks - motor.getCurrentPosition();
 
-        // Current position in encoder ticks
-        int currentPositionTicks = motor.getCurrentPosition();
-
-        // Calculate power using PIDF controller
-        double power = pidfController.calculate(targetPositionTicks, currentPositionTicks);
-
-        // Clamp power
-        if (power > maxPower) power = maxPower;
-        if (power < -maxPower) power = -maxPower;
+        if (Math.abs(error) > pidfSwitch) {
+            coarse.updateError(error);
+            coarse.updateFeedForwardInput(Math.signum(error));
+            power = coarse.run();
+        } else {
+            fine.updateError(error);
+            power = fine.run();
+        }
 
         motor.setPower(power);
     }
+
+    // ── Yaw helpers ──
+
+    public double getYaw() {
+        return normalizeAngle((motor.getCurrentPosition() - homePositionTicks) * rpt);
+    }
+
+    /**
+     * Sets target yaw relative to saved home position.
+     * 0 rad = init home position.
+     */
+    public void setYaw(double radians) {
+        targetTicks = homePositionTicks + (normalizeAngle(radians) / rpt);
+    }
+
+    public void addYaw(double radians) {
+        setYaw(getYaw() + radians);
+    }
+
+    // ── Home position ──
+
+    /**
+     * Captures the turret's CURRENT encoder position as home.
+     * Call this during init if you want the current physical angle to be the return point.
+     */
+    public void captureHomePosition() {
+        homePositionTicks = motor.getCurrentPosition();
+        targetTicks = homePositionTicks;
+    }
+
+    /** Returns turret to the encoder position saved as home. */
+    public void goHome() {
+        targetTicks = homePositionTicks;
+    }
+
+    public double getHomePositionTicks() {
+        return homePositionTicks;
+    }
+
+    // ── Goal tracking ──
+
+    /**
+     * Points turret at targetPose.
+     * Reads robot pose + heading from Pedro Follower internally.
+     */
+    public void face(Pose targetPose) {
+        face(targetPose, follower.getPose());
+    }
+
+    /**
+     * Points turret at targetPose given an explicit robotPose.
+     * Uses MathUtilities.faceAngle for centralized math.
+     */
+    public void face(Pose targetPose, Pose robotPose) {
+        setYaw(MathUtilities.faceAngle(robotPose, targetPose));
+    }
+
+    // ── Manual control ──
+
+    public void manual(double power) {
+        isManual    = true;
+        manualPower = power;
+    }
+
+    public void automatic() {
+        isManual = false;
+        manualPower = 0.0;
+    }
+
+    // ── On / Off ──
 
     public void on() {
         isOn = true;
@@ -84,43 +168,15 @@ public class Turret {
         motor.setPower(0);
     }
 
-    public void manual(double power) {
-        manualMode = true;
-        manualPower = power;
-        // Reset PIDF state when entering manual mode
-        pidfController.reset();
-    }
-
-    public void automatic() {
-        manualMode = false;
-        // Reset PIDF state when entering automatic mode
-        pidfController.reset();
-    }
-
-    public double getYaw() {
-        return normalizeAngle((motor.getCurrentPosition() - homePosition) * rpt);
-    }
-
-    public void setYaw(double radians) {
-        targetYaw = normalizeAngle(radians);
-    }
-
-    public void addYaw(double radians) {
-        setYaw(getYaw() + radians);
-    }
-
-    public void face(Pose targetPose, Pose robotPose) {
-        double angleToTarget = Math.atan2(
-                targetPose.getY() - robotPose.getY(),
-                targetPose.getX() - robotPose.getX()
-        );
-        double turretAngle = normalizeAngle(angleToTarget - robotPose.getHeading());
-        setYaw(turretAngle);
-    }
+    // ── Reset ──
 
     public void resetTurret() {
-        targetYaw = 0;
+        motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        captureHomePosition();
     }
+
+    // ── Utilities ──
 
     public static double normalizeAngle(double angleRadians) {
         double angle = angleRadians % (Math.PI * 2.0);
@@ -130,11 +186,15 @@ public class Turret {
     }
 
     public double getError() {
-        return (homePosition + (targetYaw / rpt)) - motor.getCurrentPosition();
+        return error;
+    }
+
+    public double getTarget() {
+        return targetTicks;
     }
 
     public boolean isReady() {
-        return Math.abs(getError()) < 30;
+        return Math.abs(error) < 30;
     }
 
     public String getCurrent() {
@@ -142,12 +202,15 @@ public class Turret {
     }
 
     public String getTelemetryString() {
-        return String.format(Locale.US,
-                "Yaw: %.1f° | Target: %.1f° | Error: %.0f ticks | Ready: %b",
+        return String.format(
+                Locale.US,
+                "Yaw: %.1f° | Target: %.1f° | Home: %.0f | Error: %.0f ticks | Ready: %b | Mode: %s",
                 Math.toDegrees(getYaw()),
-                Math.toDegrees(targetYaw),
-                getError(),
-                isReady()
+                Math.toDegrees((targetTicks - homePositionTicks) * rpt),
+                homePositionTicks,
+                error,
+                isReady(),
+                isManual ? "MANUAL" : (Math.abs(error) > pidfSwitch ? "COARSE" : "FINE")
         );
     }
 }

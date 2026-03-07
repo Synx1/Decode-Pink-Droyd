@@ -11,20 +11,17 @@ public final class FieldConstants {
     public static final Pose RED_GOAL  = new Pose(140, 143);
 
     // ====== CORNER RESET POSES ======
-    // Used for manual OPTIONS reset (no LL required)
-
     public static final Pose BLUE_CORNER_RESET =
             new Pose(
-                    135,                     // X (inches)
-                    9,                       // Y (inches)
-                    Math.toRadians(90)       // Heading in radians
+                    132,
+                    11,
+                    Math.toRadians(90)
             );
 
     public static final Pose RED_CORNER_RESET =
             new Pose(
-                    9,                     // X (inches)
-                    9,                       // Y (inches)
-                    Math.toRadians(90)       // Heading in radians
+                    9,
+                    9,
+                    Math.toRadians(90)
             );
-
 }

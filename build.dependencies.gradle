@@ -18,6 +18,7 @@ dependencies {
     implementation 'org.firstinspires.ftc:FtcCommon:11.1.0'
     implementation 'org.firstinspires.ftc:Vision:11.1.0'
     implementation 'androidx.appcompat:appcompat:1.2.0'
+    implementation 'dev.nextftc:control:1.0.0'
 
     implementation 'com.pedropathing:ivy:0.0.1-SNAPSHOT'
     implementation 'com.pedropathing:ftc:2.1.0-SNAPSHOT'

@@ -4,6 +4,9 @@ import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import java.util.List;
@@ -12,7 +15,7 @@ import java.util.List;
 public class LLtrack {
 
     // --- Hardware ---
-    private final Turret turret;
+    private final DcMotorEx turret;
     private final Limelight3A limelight;
 
     // --- Tag IDs ---
@@ -22,146 +25,113 @@ public class LLtrack {
     // --- Alliance flag ---
     private boolean isBlue = true;
 
-    // --- Last good shooting position (radians) ---
-    public static double preAimTolerance = Math.toRadians(2.0); // tolerance in radians
-    private double lastGoodPositionRadians = 0.0;
+    // --- Home position (encoder ticks) ---
+    // Captured once in constructor during init, then locked forever.
+    private double homePositionTicks;
+    private boolean homeLocked = false;
 
     // --- Limelight tx PIDF (DEGREES error) ---
-    public static double llKp = 0.0155;
+    public static double llKp = 0.015;
     public static double llKi = 0.0;
-    public static double llKd = 0.0;
-    public static double llKf = 0.0; // optional feedforward bias
+    public static double llKd = 0.0001;
+    public static double llKf = 0.0;
 
-    // Acceptable aim error in degrees
-    public static double llToleranceDeg = 1.0;
-
-    // Max motor power for LL aiming
+    public static double llToleranceDeg = .5;
     public static double maxPower = 0.5;
 
+    // --- Home P control (encoder ticks) ---
+    // Used both to return to home AND to actively hold it once there.
+    public static double homeKp = 0.003;
+    public static double homeMaxPower = 0.5;
+    public static double homeTolerance = 20.0;
+
     // --- Limelight PID state ---
-    private double llIntegral = 0.0;
+    private double llIntegral  = 0.0;
     private double llLastError = 0.0;
 
-    // --- Internal state for "LL just turned on" edge detection ---
-    private boolean wasTracking = false;
-    private boolean preAimActive = false;
-
     public LLtrack(HardwareMap hardwareMap, boolean startBlue) {
-        // Initialize turret subsystem
-        turret = new Turret(hardwareMap);
+        turret = hardwareMap.get(DcMotorEx.class, "TT");
+        turret.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        turret.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // Limelight
         limelight = hardwareMap.get(Limelight3A.class, "limelight");
-        limelight.pipelineSwitch(0); // your MegaTag or tracking pipeline
+        limelight.pipelineSwitch(0);
+        limelight.setPollRateHz(100);
+
         limelight.start();
 
         isBlue = startBlue;
 
-        // Initialize last good shot position to home (0)
-        lastGoodPositionRadians = 0.0;
-
-        // Set turret to home position
-        turret.resetTurret();
+        // ── Lock home at init position, never changes during auto ──
+        homePositionTicks = turret.getCurrentPosition();
+        homeLocked = true;
     }
 
     // =========================================================
     // Public API
     // =========================================================
 
-    /** Change alliance on the fly (call from init_loop with dpad). */
     public void setAlliance(boolean blue) {
         isBlue = blue;
     }
 
+    /** No-op once locked. Won't accidentally overwrite init home. */
+    public void saveHome() {
+        if (!homeLocked) {
+            homePositionTicks = turret.getCurrentPosition();
+        }
+    }
+
+    public void unlockHome() {
+        homeLocked = false;
+    }
+
     /**
-     * Main update - must be called every loop:
-     *  - If trackingButtonHeld == false: turret goes to home (0°) using automatic control
-     *  - If trackingButtonHeld == true:
-     *      * On the first frame (rising edge), pre-aim to lastGoodPositionRadians
-     *      * Once close enough, switch to Limelight tx manual control for fine alignment
+     * Main update.
      *
-     * @param trackingButtonHeld  L2 state (true when pressed)
-     * @param dtSeconds           loop time in seconds
-     * @return true if we are aligned to tag (|tx| <= tolerance) via Limelight, false otherwise
+     * trackingButtonHeld == true  → turret is FREE to move, LL PID drives it to tag
+     * trackingButtonHeld == false → turret is LOCKED to home, P-control holds it there
+     *                               (actively resists any disturbance, not just coasting)
+     *
+     * @return true if aligned to tag (only meaningful when tracking)
      */
     public boolean update(boolean trackingButtonHeld, double dtSeconds) {
-        // Always call turret periodic first
-        turret.periodic();
-
         if (trackingButtonHeld) {
-            // Rising edge: LL just turned on
-            if (!wasTracking) {
-                preAimActive = true;
-            }
-            wasTracking = true;
-
-            // Phase 1: snap turret to last known good shot position
-            if (preAimActive) {
-                boolean atLastGood = goToLastGoodPosition();
-                if (atLastGood) {
-                    preAimActive = false;
-                    // clear integral so LL PID starts clean
-                    resetLimelightPID();
-                }
-                // While pre-aiming, don't report "locked" yet
-                return false;
-            }
-
-            // Phase 2: normal Limelight alignment (manual control)
             return alignWithTag(dtSeconds);
-
         } else {
-            // LL off: go home using automatic turret control
-            wasTracking = false;
-            preAimActive = false;
             resetLimelightPID();
-            goHome();
+            holdHome();          // actively lock position at home every loop
             return false;
         }
     }
 
-    /** For telemetry: current tx for the alliance tag, or null if none. */
+    public boolean isAtHome() {
+        return Math.abs(homePositionTicks - turret.getCurrentPosition()) <= homeTolerance;
+    }
+
     public Double getAllianceTx() {
         return getTxForAllianceTag();
     }
 
-    public double getCurrentYaw() {
-        return turret.getYaw();
-    }
-
-    public double getLastGoodPositionRadians() {
-        return lastGoodPositionRadians;
-    }
+    public double getHomePositionTicks() { return homePositionTicks; }
+    public int getCurrentTicks()         { return turret.getCurrentPosition(); }
 
     // =========================================================
     // Core logic
     // =========================================================
 
-    /**
-     * Pre-aim: drive turret back to lastGoodPositionRadians using automatic control.
-     * @return true if we're within preAimTolerance of lastGoodPositionRadians.
-     */
-    private boolean goToLastGoodPosition() {
-        turret.automatic();
-        turret.setYaw(lastGoodPositionRadians);
-
-        double error = Math.abs(lastGoodPositionRadians - turret.getYaw());
-        return error <= preAimTolerance;
-    }
-
-    /** Align turret so that Limelight tx → 0 for alliance-specific tag ID using manual control. */
     private boolean alignWithTag(double dtSeconds) {
         Double tx = getTxForAllianceTag();
         if (tx == null) {
-            // No valid tag: stop turret and clear PID state
-            turret.manual(0);
+            // No tag visible — snap back to home while waiting
+            holdHome();
             resetLimelightPID();
             return false;
         }
 
-        // PIDF on tx (degrees, want 0°)
-        double error = tx;
-        llIntegral += error * dtSeconds;
+        double error      = tx;
+        llIntegral       += error * dtSeconds;
         double derivative = (dtSeconds > 0) ? (error - llLastError) / dtSeconds : 0.0;
         llLastError = error;
 
@@ -170,28 +140,22 @@ public class LLtrack {
                 + llKd * derivative
                 + Math.signum(error) * llKf;
 
-        // Clamp power
-        if (output >  maxPower) output =  maxPower;
-        if (output < -maxPower) output = -maxPower;
+        output = clamp(output, -maxPower, maxPower);
+        turret.setPower(output);
 
-        turret.manual(output);
-
-        // If we're within tolerance, remember this as the new "good shot" yaw
-        boolean withinTolerance = Math.abs(error) <= llToleranceDeg;
-        if (withinTolerance) {
-            lastGoodPositionRadians = turret.getYaw();
-        }
-
-        return withinTolerance;
+        return Math.abs(error) <= llToleranceDeg;
     }
 
-    /** Drive turret back to home (0°) using automatic control. */
-    private void goHome() {
-        turret.automatic();
-        turret.resetTurret(); // Sets target to 0
+    /**
+     * Actively holds turret at home using P control every loop.
+     * Motor is never left floating — always commanded toward home.
+     */
+    private void holdHome() {
+        double errorTicks = homePositionTicks - turret.getCurrentPosition();
+        double power      = clamp(homeKp * errorTicks, -homeMaxPower, homeMaxPower);
+        turret.setPower(power);
     }
 
-    /** Get tx (deg) for the alliance-specific tag ID, or null if not visible. */
     private Double getTxForAllianceTag() {
         LLResult result = limelight.getLatestResult();
         if (result == null || !result.isValid()) return null;
@@ -200,19 +164,20 @@ public class LLtrack {
         if (fiducials == null || fiducials.isEmpty()) return null;
 
         int desiredId = isBlue ? BLUE_TAG_ID : RED_TAG_ID;
-
         for (LLResultTypes.FiducialResult f : fiducials) {
             if (f != null && f.getFiducialId() == desiredId) {
-                return f.getTargetXDegrees(); // tx in degrees
+                return f.getTargetXDegrees();
             }
         }
-
-        // No matching ID found
         return null;
     }
 
     private void resetLimelightPID() {
-        llIntegral = 0.0;
+        llIntegral  = 0.0;
         llLastError = 0.0;
+    }
+
+    private static double clamp(double val, double min, double max) {
+        return Math.max(min, Math.min(max, val));
     }
 }
